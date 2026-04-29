@@ -1,5 +1,7 @@
 'use strict';
 
+const APP_VERSION = '0.1.0';
+
 // ══════════════════════════════════════════
 // FIREBASE CONFIG
 // ══════════════════════════════════════════
@@ -203,6 +205,9 @@ function init(){
   });
 
   const startPage=S.library.length?'planner':'library';
+  document.title=`GalleWall v${APP_VERSION}`;
+  const vb=document.getElementById('version-badge');
+  if(vb)vb.textContent=`v${APP_VERSION}`;
   showPage(startPage);
   renderLibrary();
   updateStatus();
