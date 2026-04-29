@@ -1,0 +1,442 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<!-- PWA / iPad standalone -->
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Gallery Wall">
+<meta name="theme-color" content="#c4a24a">
+<title>Gallery Wall Planner</title>
+<link rel="manifest" href="manifest.json">
+<link rel="apple-touch-icon" href="icon-512.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@300;400;500;600;700&family=Figtree:wght@300;400;500;600&family=Space+Mono&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+
+<!-- TOP NAV -->
+<div id="app-nav">
+  <div class="brand" style="margin-right:12px">Gallery Wall</div>
+  <div class="nav-tabs">
+    <div class="nav-tab on" id="nav-library" onclick="showPage('library')">📦 Library</div>
+    <div class="nav-tab" id="nav-planner" onclick="showPage('planner')">🖼 Planner</div>
+  </div>
+</div>
+
+<!-- PAGE: LIBRARY -->
+<div id="page-library" class="page">
+  <div id="lib-page-inner">
+    <div id="lib-page-header">
+      <div>
+        <div style="font-family:'Barlow Condensed',sans-serif;font-size:20px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:var(--text)">Artwork Library</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:2px">Upload once, place on any wall anytime</div>
+      </div>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="lib-search" placeholder="Search..." style="width:160px;background:var(--input);border:1px solid var(--border2);border-radius:4px;color:var(--text);font-family:Figtree,sans-serif;font-size:12px;padding:6px 10px;outline:none" oninput="renderLibraryPage()">
+        <button class="btn gold" onclick="openAddToLibrary()">+ Add Artwork</button>
+      </div>
+    </div>
+    <div id="lib-grid"></div>
+    <div id="lib-empty" style="display:none;text-align:center;padding:60px 20px;color:var(--muted)">
+      <div style="font-size:40px;margin-bottom:12px">🖼</div>
+      <div style="font-size:14px;margin-bottom:6px;color:var(--text)">No artwork yet</div>
+      <div style="font-size:12px;margin-bottom:20px">Upload photos of your pieces to start planning</div>
+      <button class="btn gold" onclick="openAddToLibrary()">+ Add Your First Piece</button>
+    </div>
+  </div>
+</div>
+
+<!-- PAGE: PLANNER -->
+<div id="page-planner" class="page hide">
+
+<!-- PLANNER TOOLBAR -->
+<div id="tb">
+  <button class="btn" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
+  <div class="tdiv"></div>
+  <button class="btn" id="btn-undo" onclick="undo()" title="Undo (Cmd+Z)">↩ Undo</button>
+  <button class="btn" id="btn-redo" onclick="redo()" title="Redo (Cmd+Shift+Z)">↪ Redo</button>
+  <div class="tdiv"></div>
+  <button class="btn" id="btn-selmode" onclick="toggleSelMode()" title="Multi-select mode">⊞ Select</button>
+  <div class="tdiv"></div>
+  <button class="btn" id="btn-dims" onclick="toggleDims()" title="Toggle dimension labels">Dims</button>
+  <button class="btn" id="btn-gaps" onclick="toggleGaps()" title="Toggle gap warnings">Gaps</button>
+  <button class="btn" id="btn-grid" onclick="toggleGrid()" title="Toggle grid overlay">Grid</button>
+  <div class="tdiv"></div>
+  <button class="btn gold" onclick="openSave()">💾 Save</button>
+  <button class="btn" onclick="openLayouts()">📂</button>
+  <button class="btn" onclick="exportPNG()">↓ PNG</button>
+  <div class="tdiv"></div>
+  <button class="btn" id="btn-cloud" onclick="openCloudModal()" title="Cloud sync &amp; backup">☁</button>
+</div>
+
+<!-- PLANNER MAIN -->
+<div id="main">
+
+<!-- SIDEBAR -->
+<div id="sb">
+  <div class="tabs">
+    <div class="tab on" id="t-add" onclick="switchTab('add')">Add</div>
+    <div class="tab" id="t-props" onclick="switchTab('props')">Arrange</div>
+    <div class="tab" id="t-wall" onclick="switchTab('wall')">Wall</div>
+  </div>
+  <div id="sb-inner">
+
+    <!-- ADD TAB -->
+    <div class="tc on" id="tc-add">
+      <div class="pnl">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <div class="ptitle" style="margin:0">My Artwork</div>
+          <button class="btn" style="font-size:10px;padding:3px 7px" onclick="showPage('library')">Manage →</button>
+        </div>
+        <div id="wall-lib-list"><div style="font-size:11px;color:var(--muted);text-align:center;padding:12px 0">Library is empty.<br>Go to Library to add artwork.</div></div>
+      </div>
+      <div class="pnl" style="padding:0">
+        <div class="acc-hdr" onclick="toggleAcc('acc-frames')">
+          <span>IKEA Frames</span><span class="fg-arrow">▶</span>
+        </div>
+        <div class="acc-body hide" id="acc-frames">
+          <div id="frame-groups" style="padding:8px 10px 4px"></div>
+          <div style="padding:0 10px 10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Custom size</div>
+            <div class="frow">
+              <label>W</label><input type="number" id="art-w" class="sm" placeholder="16" min="1" step="0.5">
+              <label>H</label><input type="number" id="art-h" class="sm" placeholder="20" min="1" step="0.5">
+              <span class="unit">in</span>
+            </div>
+            <select id="art-shape" style="margin-bottom:7px;width:100%">
+              <option value="rect">Rectangle</option>
+              <option value="oval">Circle / Oval</option>
+            </select>
+            <div style="display:flex;gap:5px">
+              <button class="btn accent" style="flex:1;justify-content:center" onclick="addCustomArtwork(false)">+ Add</button>
+              <button class="btn gold" style="flex:1;justify-content:center" onclick="addCustomArtwork(true)">📷 + Photo</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="pnl" style="padding:0">
+        <div class="acc-hdr" onclick="toggleAcc('acc-shelves')">
+          <span>Shelves &amp; Ledges</span><span class="fg-arrow">▶</span>
+        </div>
+        <div class="acc-body hide" id="acc-shelves">
+          <div id="shelf-preset-list" style="padding:8px 10px 4px"></div>
+          <div style="padding:0 10px 10px">
+            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Custom shelf</div>
+            <div class="frow">
+              <label>L</label><input type="number" id="shelf-l" class="sm" placeholder="43" min="1" step="0.5">
+              <label>H</label><input type="number" id="shelf-h" class="sm" placeholder="4" min="1" step="0.25">
+              <span class="unit">in</span>
+            </div>
+            <button class="btn btn-f" onclick="addShelf()">+ Add Shelf</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ARRANGE TAB -->
+    <div class="tc" id="tc-props">
+      <div class="pnl">
+        <div class="ptitle">Align</div>
+        <div class="bgrid">
+          <button class="btn" onclick="alignL()">⊢ Left</button>
+          <button class="btn" onclick="alignR()">Right ⊣</button>
+          <button class="btn" onclick="alignT()">⊤ Top</button>
+          <button class="btn" onclick="alignBot()">Bot ⊥</button>
+          <button class="btn" onclick="ctrH()">⊕ Ctr H</button>
+          <button class="btn" onclick="ctrV()">⊕ Ctr V</button>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Distribute</div>
+        <div class="bgrid">
+          <button class="btn accent" onclick="distH()">⇔ Horizontal</button>
+          <button class="btn accent" onclick="distV()">⇕ Vertical</button>
+        </div>
+        <div class="hint" style="margin-top:4px">Select 3+ pieces first.</div>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Group</div>
+        <div class="bgrid">
+          <button class="btn" onclick="doGroup()">Group</button>
+          <button class="btn" onclick="doUngroup()">Ungroup</button>
+        </div>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Spacing</div>
+        <div class="frow" style="margin:0">
+          <label>Min gap</label>
+          <input type="number" id="gap-in" class="sm" value="1" min="0" step="0.25" style="margin-left:8px">
+          <span class="unit">in</span>
+        </div>
+        <div class="hint" style="margin-top:4px">Pieces closer than this highlight amber.</div>
+      </div>
+      <div class="pnl hide" id="p-zone-pnl">
+        <div class="ptitle">Exclusion Zone</div>
+        <button class="btn btn-f accent" id="p-lock-btn" onclick="toggleZoneLock()">🔒 Lock Zone</button>
+      </div>
+      <div class="pnl">
+        <button class="btn btn-f danger" onclick="deleteSelected()">Delete Selected</button>
+      </div>
+    </div>
+
+    <!-- WALL TAB -->
+    <div class="tc" id="tc-wall">
+      <div class="pnl">
+        <div class="ptitle">Wall Setup</div>
+        <div class="frow">
+          <label>W</label><input type="number" id="wall-w" class="sm" value="120" min="24" max="600">
+          <label>H</label><input type="number" id="wall-h" class="sm" value="96" min="24" max="480">
+          <span class="unit">in</span>
+        </div>
+        <div class="fld"><label>Color</label><input type="color" id="wall-c" value="#f7f3ef" oninput="document.getElementById('wall').style.background=this.value"></div>
+        <button class="btn btn-f accent" onclick="applyWall()">Apply</button>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Exclusion Zones</div>
+        <div class="hint" style="margin-bottom:8px">Drag corners to resize. Lock when done.</div>
+        <button class="btn btn-f" onclick="addZone()">+ Add Zone</button>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Fixtures</div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Yellow warning if covered by artwork</div>
+        <div id="fixture-list"></div>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Saved Layouts</div>
+        <div id="wall-layouts"></div>
+        <button class="btn btn-f gold" onclick="openSave()" style="margin-top:8px">💾 Save Current</button>
+      </div>
+    </div>
+
+  </div><!-- sb-inner -->
+</div><!-- sb -->
+
+<!-- CANVAS -->
+<div id="ca" onpointerdown="canvasDown(event)">
+  <div id="wall-wrap">
+    <div id="wall"></div>
+  </div>
+</div>
+
+</div><!-- main -->
+
+<!-- STATUS BAR -->
+<div id="status">
+  <div class="si"><b>Scale</b><span id="st-scale">—</span></div>
+  <div class="si"><b>Wall</b><span id="st-wall">—</span></div>
+  <div class="si"><b>Items</b><span id="st-items">0</span></div>
+  <div class="si"><b>Sel</b><span id="st-sel">0</span></div>
+  <div class="si"><b>Pos</b><span id="st-pos">—</span></div>
+  <div class="si"><b>Cloud</b><span id="st-sync">—</span></div>
+</div>
+
+</div><!-- page-planner -->
+
+<!-- DRAG TOOLTIP -->
+<div id="tip"></div>
+
+<!-- FILE INPUTS -->
+<input type="file" id="file-in" accept="image/*">
+<input type="file" id="cam-in" accept="image/*" capture="environment">
+<input type="file" id="lib-file-in" accept="image/*" multiple>
+<input type="file" id="lib-cam-in" accept="image/*" capture="environment">
+
+<!-- MODAL: SAVE -->
+<div class="overlay hide" id="m-save">
+  <div class="modal">
+    <div class="mtitle">Save Layout</div>
+    <div class="fld"><label>Layout Name</label><input type="text" id="save-name" value="Gallery Wall" placeholder="Name"></div>
+    <div class="hint" id="save-preview"></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-save')">Cancel</button>
+      <button class="btn gold" onclick="saveLayout()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: LAYOUTS -->
+<div class="overlay hide" id="m-layouts">
+  <div class="modal">
+    <div class="mtitle">Saved Layouts</div>
+    <div id="layouts-list"><div style="font-size:11px;color:var(--muted)">No saved layouts yet.</div></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-layouts')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: IMAGE CROP -->
+<div class="overlay hide" id="m-crop">
+  <div class="modal">
+    <div class="mtitle">Position Image</div>
+    <div id="crop-wrap"><canvas id="crop-canvas"></canvas></div>
+    <div style="margin-top:10px">
+      <div class="frow"><label>Zoom</label><input type="range" id="crop-zoom" min="50" max="400" value="100" oninput="updateCrop()"><span id="zoom-val" class="unit">100%</span></div>
+    </div>
+    <div class="hint">Drag to reposition · Slider to zoom · Image fills the frame.</div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-crop')">Cancel</button>
+      <button class="btn accent" onclick="confirmCrop()">Apply</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: ADD TO LIBRARY -->
+<div class="overlay hide" id="m-lib-add">
+  <div class="modal">
+    <div class="mtitle" id="lib-modal-title">Add to Library</div>
+    <div id="lib-preview-wrap" style="margin-bottom:12px;display:none">
+      <img id="lib-preview-img" style="width:100%;border-radius:4px;border:1px solid var(--border2);max-height:140px;object-fit:contain;background:#000">
+    </div>
+    <div id="lib-no-photo" style="display:flex;gap:6px;margin-bottom:12px">
+      <button class="btn accent" style="flex:1;justify-content:center" onclick="triggerLibUpload(false)">📁 Files</button>
+      <button class="btn gold" style="flex:1;justify-content:center" onclick="triggerLibUpload(true)">📷 Camera</button>
+    </div>
+    <div id="lib-change-photo" style="display:none;margin-bottom:12px">
+      <button class="btn" style="width:100%;justify-content:center;font-size:10px" onclick="triggerLibUpload(false)">📁 Change Photo</button>
+    </div>
+    <div class="fld"><label>Name</label><input type="text" id="lib-name" placeholder="Artwork name"></div>
+    <div class="fld">
+      <label>Type</label>
+      <select id="lib-type">
+        <option value="Photo">Photo</option>
+        <option value="Map">Map</option>
+        <option value="Poster">Poster</option>
+        <option value="Canvas">Canvas</option>
+        <option value="Print">Print</option>
+        <option value="Drawing">Drawing</option>
+        <option value="Other">Other</option>
+      </select>
+    </div>
+    <div class="toggle-row" style="margin-bottom:10px">
+      <span class="toggle-label">Framed</span>
+      <label class="toggle">
+        <input type="checkbox" id="lib-framed" onchange="syncFramedUI()">
+        <div class="toggle-track"></div>
+        <div class="toggle-thumb"></div>
+      </label>
+    </div>
+    <div id="lib-frame-color-row" style="display:none;margin-bottom:10px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Frame Color</div>
+      <div class="color-swatch-row" id="lib-frame-swatches"></div>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Primary Color</div>
+      <div class="color-swatch-row" id="lib-color-swatches"></div>
+    </div>
+    <div class="fld">
+      <label>Frame Preset (optional)</label>
+      <select id="lib-preset" onchange="applyLibPreset()">
+        <option value="">— Pick a preset or enter manually —</option>
+      </select>
+    </div>
+    <div style="display:flex;gap:6px;margin-bottom:10px">
+      <button class="btn on" id="lib-portrait" style="flex:1;justify-content:center;font-size:10px" onclick="setLibOrientation('portrait')">Portrait ↕</button>
+      <button class="btn" id="lib-landscape" style="flex:1;justify-content:center;font-size:10px" onclick="setLibOrientation('landscape')">Landscape ↔</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:4px">
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Width (in)</label>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button class="stepper-btn" onclick="stepDim('lib-w',-0.25)">−</button>
+          <input type="number" id="lib-w" class="sm" placeholder="16" min="0.5" step="0.25" style="flex:1;text-align:center" oninput="syncLibOrientation()">
+          <button class="stepper-btn" onclick="stepDim('lib-w',0.25)">+</button>
+        </div>
+      </div>
+      <div>
+        <label style="font-size:10px;color:var(--muted);display:block;margin-bottom:4px">Height (in)</label>
+        <div style="display:flex;align-items:center;gap:4px">
+          <button class="stepper-btn" onclick="stepDim('lib-h',-0.25)">−</button>
+          <input type="number" id="lib-h" class="sm" placeholder="20" min="0.5" step="0.25" style="flex:1;text-align:center" oninput="syncLibOrientation()">
+          <button class="stepper-btn" onclick="stepDim('lib-h',0.25)">+</button>
+        </div>
+      </div>
+    </div>
+    <div class="hint" style="margin-bottom:12px">Use frame outer dimensions, not print size.</div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-lib-add')">Cancel</button>
+      <button class="btn gold" id="btn-lib-save" onclick="confirmAddToLibrary()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: BATCH REVIEW -->
+<div class="overlay hide" id="m-batch">
+  <div class="modal" style="width:min(560px,96vw)">
+    <div class="mtitle">Review &amp; Add to Library</div>
+    <div class="hint" style="margin-bottom:12px">Metadata parsed from filename. Adjust anything before adding.</div>
+    <div id="batch-list"></div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-batch')">Cancel</button>
+      <button class="btn gold" id="btn-batch-save" onclick="confirmBatch()">Add All to Library</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CLOUD SYNC -->
+<div class="overlay hide" id="m-cloud">
+  <div class="modal">
+    <div class="mtitle">☁ Cloud &amp; Backup</div>
+
+    <div style="margin-bottom:14px">
+      <div class="ptitle">Sync Status</div>
+      <div style="font-size:11px;color:var(--muted);margin-bottom:8px" id="cloud-status-msg">Checking…</div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div style="margin:12px 0">
+      <div class="ptitle">Device ID</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Share this ID to link another device to your data.</div>
+      <div style="display:flex;gap:6px;align-items:center">
+        <span id="cloud-uid" class="cloud-uid-box">—</span>
+        <button class="btn" onclick="copyDeviceId()">Copy</button>
+      </div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div style="margin:12px 0">
+      <div class="ptitle">Link Another Device</div>
+      <div style="font-size:10px;color:var(--muted);margin-bottom:8px">Enter a Device ID from another device to load its data here.</div>
+      <div style="display:flex;gap:6px">
+        <input type="text" id="link-code" placeholder="Paste device ID…" style="flex:1">
+        <button class="btn accent" onclick="linkDevice()">Link</button>
+      </div>
+      <div class="hint">⚠ This replaces your current local data with the other device's data.</div>
+    </div>
+
+    <div class="sep"></div>
+
+    <div style="margin-top:12px">
+      <div class="ptitle">Backup</div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-top:8px">
+        <button class="btn btn-f gold" onclick="exportJSON()">↓ Export JSON</button>
+        <button class="btn btn-f" onclick="importJSON()">↑ Import JSON</button>
+      </div>
+      <div class="hint" style="margin-top:6px">JSON backup includes all library items and layouts. Use to move data between devices manually.</div>
+    </div>
+
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-cloud')">Close</button>
+    </div>
+  </div>
+</div>
+
+<!-- Firebase SDKs (compat — keep global firebase object, no module rewrite needed) -->
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-firestore-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.14.1/firebase-storage-compat.js"></script>
+<script src="app.js"></script>
+
+<script>
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js').catch(() => {});
+  }
+</script>
+</body>
+</html>
