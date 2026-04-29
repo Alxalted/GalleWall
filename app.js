@@ -151,34 +151,6 @@ function init(){
   try{const d=localStorage.getItem('gwp_layouts');if(d)S.layouts=JSON.parse(d);}catch(e){}
   try{const d=localStorage.getItem('gwp_library');if(d)S.library=JSON.parse(d);}catch(e){}
 
-  // Build frame presets
-  const fg=document.getElementById('frame-groups');
-  FRAME_GROUPS.forEach(g=>{
-    const wrap=document.createElement('div');wrap.className='fg';
-    const hdr=document.createElement('div');hdr.className='fg-hdr';
-    hdr.innerHTML=`<span class="fg-name">${g.name}</span><span class="fg-arrow">▶</span>`;
-    hdr.onclick=()=>wrap.classList.toggle('open');
-    const sizes=document.createElement('div');sizes.className='fg-sizes';
-    g.sizes.forEach(s=>{
-      const row=document.createElement('div');row.className='fs-row';
-      row.innerHTML=`<span class="fs-dims" style="color:var(--text);font-size:10px">${s.w}" × ${s.h}"</span><button class="fs-cam" title="Add with photo">📷</button>`;
-      row.querySelector('.fs-cam').addEventListener('click',e=>{e.stopPropagation();quickAdd({name:g.name,w:s.w,h:s.h},true);});
-      row.addEventListener('click',()=>quickAdd({name:g.name,w:s.w,h:s.h},false));
-      sizes.appendChild(row);
-    });
-    wrap.appendChild(hdr);wrap.appendChild(sizes);
-    fg.appendChild(wrap);
-  });
-
-  // Build shelf presets
-  const sl=document.getElementById('shelf-preset-list');
-  IKEA_LEDGES.forEach(l=>{
-    const row=document.createElement('div');row.className='preset-row';
-    row.innerHTML=`<span class="pr-name">${l.n}</span><span class="pr-dims">${l.w}"×${l.h}"</span>`;
-    row.addEventListener('click',()=>quickAddShelf(l));
-    sl.appendChild(row);
-  });
-
   // Build fixture list
   const fl=document.getElementById('fixture-list');
   FIXTURE_PRESETS.forEach(f=>{
