@@ -67,6 +67,8 @@
   <button class="btn" id="btn-gaps" onclick="toggleGaps()" title="Toggle gap warnings">Gaps</button>
   <button class="btn" id="btn-grid" onclick="toggleGrid()" title="Toggle grid overlay">Grid</button>
   <div class="tdiv"></div>
+  <button class="btn" onclick="openHangingGuide()" title="Generate drilling &amp; hanging guide">📐 Drill Guide</button>
+  <div class="tdiv"></div>
   <button class="btn gold" onclick="openSave()">💾 Save</button>
   <button class="btn" onclick="openLayouts()">📂</button>
   <button class="btn" onclick="exportPNG()">↓ PNG</button>
@@ -179,6 +181,30 @@
           <label class="toggle"><input type="checkbox" id="p-snap-shelf" onchange="togglePieceSnap()"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
         </div>
         <div class="hint" style="margin-top:4px">Snaps bottom of piece to shelf. Rides with shelf when moved.</div>
+        <div class="ptitle" style="margin-top:12px">Hanging Hardware</div>
+        <div class="frow" style="margin:0 0 6px">
+          <label>Type</label>
+          <select id="p-hanging-type" style="margin-left:auto;font-size:10px" onchange="setPieceHangingType(this.value)">
+            <option value="dring">D-Rings</option>
+            <option value="sawtooth">Sawtooth</option>
+            <option value="wire">Picture Wire</option>
+          </select>
+        </div>
+        <div id="p-hanging-dring" style="display:flex;gap:8px;margin-bottom:4px">
+          <div style="flex:1">
+            <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
+            <input type="number" id="p-hanging-offset" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:100%;text-align:center" onchange="setPieceHangingOffset(this.value)">
+          </div>
+          <div style="flex:1">
+            <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Side inset (in)</label>
+            <input type="number" id="p-hanging-inset" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:100%;text-align:center" onchange="setPieceHangingInset(this.value)">
+          </div>
+        </div>
+        <div id="p-hanging-single" style="display:none;margin-bottom:4px">
+          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
+          <input type="number" id="p-hanging-offset2" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:80px;text-align:center" onchange="setPieceHangingOffset(this.value)">
+        </div>
+        <div class="hint">Blank = auto-calculate from dimensions.</div>
       </div>
       <!-- Shelf options -->
       <div class="pnl hide" id="p-shelf-pnl">
@@ -405,6 +431,29 @@
       <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Primary Color</div>
       <div class="color-swatch-row" id="lib-color-swatches"></div>
     </div>
+    <div id="lib-hanging-section" style="margin-bottom:10px;display:none">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Hanging Hardware</div>
+      <select id="lib-hanging-type" onchange="syncLibHangingUI()" style="margin-bottom:6px">
+        <option value="dring">D-Rings (recommended)</option>
+        <option value="sawtooth">Sawtooth</option>
+        <option value="wire">Picture Wire</option>
+      </select>
+      <div id="lib-hanging-dring-fields" style="display:flex;gap:8px;margin-bottom:4px">
+        <div style="flex:1">
+          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
+          <input type="number" id="lib-hanging-offset" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:100%;text-align:center">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Side inset (in)</label>
+          <input type="number" id="lib-hanging-inset" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:100%;text-align:center">
+        </div>
+      </div>
+      <div id="lib-hanging-single-fields" style="margin-bottom:4px;display:none">
+        <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
+        <input type="number" id="lib-hanging-offset2" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:80px;text-align:center">
+      </div>
+      <div class="hint">Leave blank for auto-calculation from piece dimensions.</div>
+    </div>
     <div class="fld" id="lib-preset-row">
       <label>Frame Preset (optional)</label>
       <select id="lib-preset" onchange="applyLibPreset()">
@@ -437,6 +486,27 @@
     <div class="mfooter">
       <button class="btn" onclick="closeModal('m-lib-add')">Cancel</button>
       <button class="btn gold" id="btn-lib-save" onclick="confirmAddToLibrary()">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: HANGING / DRILLING GUIDE -->
+<div class="overlay hide" id="m-hanging-guide">
+  <div class="modal" style="width:min(720px,96vw);max-height:92vh;overflow-y:auto">
+    <div class="mtitle">📐 Drilling Guide</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <label style="font-size:10px;color:var(--muted);white-space:nowrap">Floor to top of wall canvas:</label>
+      <input type="number" id="guide-floor-offset" min="0" step="1" class="sm" style="width:64px;text-align:center" oninput="refreshHangingGuide()">
+      <span style="font-size:10px;color:var(--muted)">inches</span>
+      <span style="font-size:9px;color:var(--dim);flex:1">(Height from floor to the top edge of your planning area)</span>
+    </div>
+    <div id="guide-svg-wrap" style="border:1px solid var(--border2);border-radius:6px;overflow:hidden;margin-bottom:14px;background:#f5f0eb;text-align:center"></div>
+    <div style="font-size:10px;font-weight:600;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px">Mount Point Measurements</div>
+    <div id="guide-table-wrap" style="font-size:11px"></div>
+    <div class="hint" style="margin:10px 0">All measurements in inches. <strong>From left</strong> = horizontal distance from left wall edge. <strong>From floor</strong> = vertical height from floor. Red marks = screw/nail positions.</div>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-hanging-guide')">Close</button>
+      <button class="btn accent" onclick="printHangingGuide()">🖨 Print Guide</button>
     </div>
   </div>
 </div>

@@ -1005,6 +1005,21 @@ function updatePropsPanel(){
     // Snap toggle
     const sn=document.getElementById('p-snap-shelf');
     if(sn)sn.checked=p.snapToShelf!==false;
+    // Hanging hardware
+    const pht=document.getElementById('p-hanging-type');
+    const pho=document.getElementById('p-hanging-offset');
+    const phi=document.getElementById('p-hanging-inset');
+    const pho2=document.getElementById('p-hanging-offset2');
+    const phd=document.getElementById('p-hanging-dring');
+    const phs=document.getElementById('p-hanging-single');
+    const htype=p.hangingType||'dring';
+    if(pht)pht.value=htype;
+    const isDring=htype==='dring';
+    if(phd)phd.style.display=isDring?'flex':'none';
+    if(phs)phs.style.display=isDring?'none':'';
+    if(pho)pho.value=p.hangingOffsetTop??'';
+    if(phi)phi.value=p.hangingInset??'';
+    if(pho2)pho2.value=p.hangingOffsetTop??'';
   }else if(p.type==='shelf'&&shelfPnl){
     shelfPnl.classList.remove('hide');
     const sc=document.getElementById('p-shelf-color-swatches');
@@ -1307,7 +1322,11 @@ function openSingleAddModal(file){
   document.getElementById('m-lib-add').dataset.editId='';
   const tagsEl=document.getElementById('lib-tags');if(tagsEl)tagsEl.value='';
   const catEl=document.getElementById('lib-category');if(catEl)catEl.value='art';
-  syncLibCategoryUI();
+  const htEl=document.getElementById('lib-hanging-type');if(htEl)htEl.value='dring';
+  const hoEl=document.getElementById('lib-hanging-offset');if(hoEl)hoEl.value='';
+  const hiEl=document.getElementById('lib-hanging-inset');if(hiEl)hiEl.value='';
+  const ho2=document.getElementById('lib-hanging-offset2');if(ho2)ho2.value='';
+  syncLibCategoryUI();syncLibHangingUI();
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',parsed.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',parsed.frameColor?.hex||null);
@@ -1357,6 +1376,8 @@ function syncLibCategoryUI(){
   document.getElementById('lib-icon-row').style.display=isDecor?'':'none';
   const titleMap={art:'Add to Library',shelf:'Add Shelf / Ledge',decor:'Add Decor / Object'};
   document.getElementById('lib-modal-title').textContent=titleMap[cat]||'Add to Library';
+  // Hanging section: art only
+  syncLibCategoryUI_hanging(isArt);
 }
 function setLibShelfType(type){
   document.getElementById('lib-stype-ledge').classList.toggle('on',type==='ledge');
@@ -1370,6 +1391,165 @@ function openLibModalFor(cat){
   const catEl=document.getElementById('lib-category');
   if(catEl){catEl.value=cat;syncLibCategoryUI();}
 }
+
+// ── Hanging hardware helpers ──
+function syncLibCategoryUI_hanging(isArt){
+  const s=document.getElementById('lib-hanging-section');
+  if(s)s.style.display=isArt?'':'none';
+}
+function syncLibHangingUI(){
+  const type=document.getElementById('lib-hanging-type')?.value||'dring';
+  const isDring=type==='dring';
+  document.getElementById('lib-hanging-dring-fields').style.display=isDring?'flex':'none';
+  document.getElementById('lib-hanging-single-fields').style.display=isDring?'none':'';
+}
+function calcMountPoints(piece){
+  const type=piece.hangingType||(piece.type==='shelf'?'shelf':'dring');
+  const pts=[];
+  if(type==='shelf'){
+    const inset=piece.hangingInset!=null?piece.hangingInset:Math.min(piece.w*0.2,6);
+    const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:piece.h*0.5;
+    pts.push({x:piece.x+inset,y:piece.y+dy,label:'L screw'});
+    if(piece.w>8)pts.push({x:piece.x+piece.w-inset,y:piece.y+dy,label:'R screw'});
+  }else if(type==='dring'){
+    const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:Math.max(1.5,Math.min(piece.h*0.25,4));
+    const inset=piece.hangingInset!=null?piece.hangingInset:Math.min(3,Math.max(1.5,piece.w*0.18));
+    const my=piece.y+dy;
+    if(piece.w<=7){
+      pts.push({x:piece.x+piece.w/2,y:my,label:'Center'});
+    }else{
+      pts.push({x:piece.x+inset,y:my,label:'L screw'});
+      pts.push({x:piece.x+piece.w-inset,y:my,label:'R screw'});
+    }
+  }else if(type==='sawtooth'){
+    const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:1.5;
+    pts.push({x:piece.x+piece.w/2,y:piece.y+dy,label:'Center nail'});
+  }else if(type==='wire'){
+    const sag=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:2;
+    pts.push({x:piece.x+piece.w/2,y:piece.y+sag,label:'Hook'});
+  }
+  return pts;
+}
+
+// ── Piece panel hanging interactions ──
+function setPieceHangingType(val){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p)return;
+  p.hangingType=val;
+  const isDring=val==='dring';
+  document.getElementById('p-hanging-dring').style.display=isDring?'flex':'none';
+  document.getElementById('p-hanging-single').style.display=isDring?'none':'';
+}
+function setPieceHangingOffset(val){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p)return;
+  p.hangingOffsetTop=val===''||val==null?null:parseFloat(val)||null;
+}
+function setPieceHangingInset(val){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p)return;
+  p.hangingInset=val===''||val==null?null:parseFloat(val)||null;
+}
+
+// ── Hanging guide ──
+function openHangingGuide(){
+  const el=document.getElementById('m-hanging-guide');if(!el)return;
+  const fo=document.getElementById('guide-floor-offset');
+  if(fo&&!fo.value)fo.value=S.wall.h;
+  el.classList.remove('hide');
+  refreshHangingGuide();
+}
+function refreshHangingGuide(){
+  const floorOffset=parseFloat(document.getElementById('guide-floor-offset')?.value)||S.wall.h;
+  document.getElementById('guide-svg-wrap').innerHTML=renderHangingGuideSVG(floorOffset);
+  document.getElementById('guide-table-wrap').innerHTML=renderHangingGuideTable(floorOffset);
+}
+function renderHangingGuideSVG(floorOffset){
+  const W=S.wall.w,H=S.wall.h;
+  const MAX_PX=640,scale=Math.min(MAX_PX/W,(MAX_PX*0.75)/H);
+  const sw=Math.round(W*scale),sh=Math.round(H*scale);
+  const pieces=S.pieces.filter(p=>p.type==='art'||p.type==='shelf');
+  let svg=`<svg xmlns="http://www.w3.org/2000/svg" width="${sw}" height="${sh}" viewBox="0 0 ${sw} ${sh}" style="display:block;margin:0 auto">`;
+  svg+=`<rect width="${sw}" height="${sh}" fill="#f0ebe5" rx="2"/>`;
+  // Pieces
+  pieces.forEach(p=>{
+    const px=p.x*scale,py=p.y*scale,pw=p.w*scale,ph=p.h*scale;
+    const fill=p.type==='shelf'?'#c4a97a':'#e8e0d8';
+    svg+=`<rect x="${px.toFixed(1)}" y="${py.toFixed(1)}" width="${pw.toFixed(1)}" height="${ph.toFixed(1)}" fill="${fill}" stroke="#666" stroke-width="0.8" rx="1"/>`;
+    const fs=Math.max(7,Math.min(11,pw*0.18));
+    const lbl=p.label||'';
+    if(lbl)svg+=`<text x="${(px+pw/2).toFixed(1)}" y="${(py+ph/2+fs*0.35).toFixed(1)}" text-anchor="middle" font-size="${fs}" fill="#444" font-family="sans-serif">${esc(lbl.length>12?lbl.slice(0,10)+'…':lbl)}</text>`;
+  });
+  // Mount points
+  pieces.forEach(p=>{
+    calcMountPoints(p).forEach(pt=>{
+      const px=pt.x*scale,py=pt.y*scale,r=Math.max(3,4*Math.min(scale,1));
+      svg+=`<line x1="${(px-r).toFixed(1)}" y1="${py.toFixed(1)}" x2="${(px+r).toFixed(1)}" y2="${py.toFixed(1)}" stroke="#e03030" stroke-width="1.5"/>`;
+      svg+=`<line x1="${px.toFixed(1)}" y1="${(py-r).toFixed(1)}" x2="${px.toFixed(1)}" y2="${(py+r).toFixed(1)}" stroke="#e03030" stroke-width="1.5"/>`;
+      svg+=`<circle cx="${px.toFixed(1)}" cy="${py.toFixed(1)}" r="1.5" fill="#e03030"/>`;
+    });
+  });
+  svg+=`</svg>`;
+  return svg;
+}
+function renderHangingGuideTable(floorOffset){
+  const pieces=S.pieces.filter(p=>p.type==='art'||p.type==='shelf');
+  if(!pieces.length)return'<div style="color:var(--muted);font-size:11px;text-align:center;padding:12px">No pieces on wall.</div>';
+  let html=`<table style="width:100%;border-collapse:collapse;font-size:11px">
+    <thead><tr style="background:var(--border2)">
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Piece</th>
+      <th style="padding:5px 8px;text-align:left;font-weight:600">Mount</th>
+      <th style="padding:5px 8px;text-align:right;font-weight:600">From left</th>
+      <th style="padding:5px 8px;text-align:right;font-weight:600">From top</th>
+      <th style="padding:5px 8px;text-align:right;font-weight:600">From floor</th>
+    </tr></thead><tbody>`;
+  pieces.forEach((p,i)=>{
+    const pts=calcMountPoints(p);
+    const bg=i%2===0?'':'background:var(--sidebar)';
+    pts.forEach((pt,j)=>{
+      const fromFloor=(floorOffset-pt.y).toFixed(2);
+      html+=`<tr style="${bg}">
+        ${j===0?`<td style="padding:4px 8px;border-top:1px solid var(--border2)" rowspan="${pts.length}">${esc(p.label||'—')}<br><span style="font-size:9px;color:var(--muted)">${p.w}"×${p.h}"</span></td>`:''}
+        <td style="padding:4px 8px;border-top:1px solid var(--border2)">${esc(pt.label)}</td>
+        <td style="padding:4px 8px;border-top:1px solid var(--border2);text-align:right;font-family:'Space Mono',monospace">${pt.x.toFixed(2)}"</td>
+        <td style="padding:4px 8px;border-top:1px solid var(--border2);text-align:right;font-family:'Space Mono',monospace">${pt.y.toFixed(2)}"</td>
+        <td style="padding:4px 8px;border-top:1px solid var(--border2);text-align:right;font-family:'Space Mono',monospace;color:#e03030;font-weight:600">${fromFloor}"</td>
+      </tr>`;
+    });
+  });
+  html+=`</tbody></table>`;
+  return html;
+}
+function printHangingGuide(){
+  const floorOffset=parseFloat(document.getElementById('guide-floor-offset')?.value)||S.wall.h;
+  const svg=renderHangingGuideSVG(floorOffset);
+  const table=renderHangingGuideTable(floorOffset);
+  const win=window.open('','_blank','width=800,height=900');
+  win.document.write(`<!DOCTYPE html><html><head><title>Drilling Guide</title>
+  <style>
+    body{font-family:sans-serif;padding:24px;color:#222;max-width:760px;margin:0 auto}
+    h1{font-size:18px;margin-bottom:4px}
+    .subtitle{font-size:11px;color:#666;margin-bottom:16px}
+    .svg-wrap{border:1px solid #ccc;border-radius:4px;padding:8px;margin-bottom:16px;background:#f0ebe5;text-align:center}
+    table{width:100%;border-collapse:collapse;font-size:11px;margin-bottom:12px}
+    th{background:#eee;padding:5px 8px;text-align:left;font-weight:600}
+    td{padding:4px 8px;border-top:1px solid #ddd}
+    .mono{font-family:monospace}
+    .red{color:#c02020;font-weight:600}
+    .hint{font-size:10px;color:#888;margin-top:8px}
+    @media print{button{display:none}}
+  </style></head><body>
+  <h1>📐 Drilling Guide</h1>
+  <div class="subtitle">Floor to top of wall: ${floorOffset}" &nbsp;·&nbsp; Wall: ${S.wall.w}"×${S.wall.h}" &nbsp;·&nbsp; ${new Date().toLocaleDateString()}</div>
+  <div class="svg-wrap">${svg}</div>
+  ${table}
+  <div class="hint">All measurements in inches. <strong>From floor</strong> = height from floor to screw/nail. <strong>From left</strong> = horizontal distance from left wall edge.</div>
+  <br><button onclick="window.print()">🖨 Print</button>
+  </body></html>`);
+  win.document.close();
+  setTimeout(()=>win.print(),400);
+}
+
 function getSelectedSwatch(containerId){
   const on=document.getElementById(containerId)?.querySelector('.csw.on');
   return on?{hex:on.dataset.color,name:on.dataset.colorName}:null;
@@ -1427,6 +1607,13 @@ async function confirmAddToLibrary(){
     itemData.type=document.getElementById('lib-type').value;
     itemData.framed=document.getElementById('lib-framed').checked;
     itemData.frameColor=getSelectedSwatch('lib-frame-swatches');
+    const htype=document.getElementById('lib-hanging-type')?.value||'dring';
+    itemData.hangingType=htype;
+    const isDring=htype==='dring';
+    const rawOffset=parseFloat(document.getElementById(isDring?'lib-hanging-offset':'lib-hanging-offset2')?.value);
+    const rawInset=parseFloat(document.getElementById('lib-hanging-inset')?.value);
+    itemData.hangingOffsetTop=isNaN(rawOffset)?null:rawOffset;
+    itemData.hangingInset=isDring&&!isNaN(rawInset)?rawInset:null;
     let imgUrl=libImgData;
     if(imgUrl&&imgUrl.startsWith('data:')&&S.cloudReady){
       const saveBtn=document.getElementById('btn-lib-save');
@@ -1492,7 +1679,11 @@ function openEditLibItem(id){
   const iconEl=document.getElementById('lib-icon');
   if(iconEl)iconEl.value=item.icon||'';
   if((item.itemCategory||'art')==='shelf')setLibShelfType(item.shelfType||'ledge');
-  syncLibCategoryUI();
+  const htEl=document.getElementById('lib-hanging-type');if(htEl)htEl.value=item.hangingType||'dring';
+  const hoEl=document.getElementById('lib-hanging-offset');if(hoEl)hoEl.value=item.hangingOffsetTop??'';
+  const hiEl=document.getElementById('lib-hanging-inset');if(hiEl)hiEl.value=item.hangingInset??'';
+  const ho2=document.getElementById('lib-hanging-offset2');if(ho2)ho2.value=item.hangingOffsetTop??'';
+  syncLibCategoryUI();syncLibHangingUI();
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',item.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',item.frameColor?.hex||null);
@@ -1563,7 +1754,8 @@ function addFromLibrary(item){
       label:item.name,gid:null,zi:S.pieces.length+1,
       libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
       snapToShelf:true,snappedToShelfId:null,
-      frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1};
+      frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
+      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null};
     item.placedId=piece.id;persistLibrary();
     S.pieces.push(piece);mkArtEl(piece);
   }
@@ -2192,6 +2384,7 @@ function addPieceFromDrawerAtPos(data,wx,wy){
       libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
       snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
       frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
+      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,
     };
     item.placedId=piece.id;persistLibrary();
     S.pieces.push(piece);mkArtEl(piece);
@@ -2275,6 +2468,7 @@ function addSelectedFromDrawer(){
         libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
         snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
         frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
+        hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,
       };
       item.placedId=piece.id;S.pieces.push(piece);mkArtEl(piece);newIds.push(piece.id);
     }else if(parts[0]==='frame'){
