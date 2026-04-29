@@ -68,6 +68,7 @@ let S = {
   wall:{w:120,h:96,c:'#f7f3ef'},
   pieces:[],
   groups:{},
+  links:{},   // shelf links — separate from groups
   sel:new Set(),
   dims:false,
   gaps:false,
@@ -77,8 +78,10 @@ let S = {
   library:[],
   nid:1,
   ngid:1,
+  nlid:1,     // next link id
   scale:7,
   drag:null,
+  lasso:null, // lasso selection state
   cropState:null,
   cropPieceId:null,
   undoStack:[],
@@ -99,7 +102,8 @@ function snapshot(){
   return JSON.stringify({
     pieces:S.pieces,
     groups:Object.fromEntries(Object.entries(S.groups).map(([k,v])=>[k,[...v]])),
-    nid:S.nid,ngid:S.ngid
+    links:Object.fromEntries(Object.entries(S.links).map(([k,v])=>[k,[...v]])),
+    nid:S.nid,ngid:S.ngid,nlid:S.nlid
   });
 }
 function pushUndo(){
@@ -114,7 +118,9 @@ function applySnapshot(snap){
   S.pieces=d.pieces;
   S.groups={};
   Object.entries(d.groups||{}).forEach(([k,v])=>{S.groups[k]=new Set(v);});
-  S.nid=d.nid;S.ngid=d.ngid;
+  S.links={};
+  Object.entries(d.links||{}).forEach(([k,v])=>{S.links[k]=new Set(v);});
+  S.nid=d.nid;S.ngid=d.ngid;S.nlid=d.nlid||S.nlid;
   S.sel.clear();
   S.pieces.forEach(p=>{
     if(p.type==='art')mkArtEl(p);
@@ -500,7 +506,7 @@ function quickAddShelf(l){
     y:S.wall.h*0.5,
     w:l.w,h:l.h,color:'#7a6548',
     label:l.n,shelfType:l.type||'shelf',
-    gid:null,zi:S.pieces.length+1,
+    gid:null,lid:null,zi:S.pieces.length+1,
     conflict:false,gw:false,owarn:false,ywarn:false
   };
   S.pieces.push(piece);mkShelfEl(piece);
@@ -682,6 +688,7 @@ function resizeDown(e,id,dir){
   e.currentTarget.setPointerCapture(e.pointerId);
 }
 
+let _detachTimer=null;
 function pieceDown(e,id){
   e.preventDefault();e.stopPropagation();
   const p=getPiece(id);
@@ -690,14 +697,47 @@ function pieceDown(e,id){
   if(!additive&&!S.sel.has(id)){
     S.sel.clear();S.sel.add(id);
     if(p?.gid&&S.groups[p.gid])S.groups[p.gid].forEach(i=>S.sel.add(i));
+    // Also add linked shelf members
+    if(p?.lid!=null&&S.links[p.lid])S.links[p.lid].forEach(i=>S.sel.add(i));
     showPiecePanel();
   }else if(additive){S.sel.has(id)?S.sel.delete(id):S.sel.add(id);}
   refreshSel();updatePropsPanel();updateStatus();
   if(S.selMode)return;
+  // 1s hold-to-detach: if this piece is linked or snapped, break connections on long hold
+  const isLinked=p?.lid!=null;
+  const isSnapped=p?.snappedToShelfId!=null;
+  if(isLinked||isSnapped){
+    _detachTimer=setTimeout(()=>{
+      _detachTimer=null;
+      if(navigator.vibrate)navigator.vibrate([20,30,20]);
+      // Break link
+      if(p.lid!=null&&S.links[p.lid]){
+        S.links[p.lid].delete(id);
+        if(S.links[p.lid].size<2)delete S.links[p.lid];
+        p.lid=null;
+      }
+      // Break snap
+      p.snappedToShelfId=null;
+      // Rebuild drag with only this piece (detached move)
+      const sp2={};sp2[id]={x:p.x,y:p.y};
+      S.drag={ids:[id],snapFollowers:[],sx:S.drag?.sx||e.clientX,sy:S.drag?.sy||e.clientY,sp:sp2,moved:false,detached:true};
+      S.sel.clear();S.sel.add(id);
+      refreshSel();updatePropsPanel();
+      showToast('Detached — piece moves alone. Group preserved.');
+    },900);
+  }
   const sp={};
   S.sel.forEach(sid=>{const q=getPiece(sid);if(q)sp[sid]={x:q.x,y:q.y};});
+  // Collect link members of any selected shelf
+  const linkedShelvesSel=[...S.sel].filter(sid=>{const q=getPiece(sid);return q?.type==='shelf'&&q.lid!=null;});
+  linkedShelvesSel.forEach(sid=>{
+    const q=getPiece(sid);
+    if(q?.lid!=null&&S.links[q.lid])S.links[q.lid].forEach(i=>{
+      if(!sp[i]){const r=getPiece(i);if(r)sp[i]={x:r.x,y:r.y};}
+    });
+  });
   // Collect art pieces snapped to any shelf in the selection so they ride along
-  const shelfIdsInSel=[...S.sel].filter(sid=>getPiece(sid)?.type==='shelf');
+  const shelfIdsInSel=Object.keys(sp).filter(sid=>getPiece(+sid)?.type==='shelf').map(Number);
   const snapFollowers=[];
   if(shelfIdsInSel.length){
     S.pieces.forEach(a=>{
@@ -707,15 +747,48 @@ function pieceDown(e,id){
     });
   }
   pushUndo();
-  S.drag={ids:[...S.sel],snapFollowers,sx:e.clientX,sy:e.clientY,sp,moved:false};
+  S.drag={ids:Object.keys(sp).map(Number),snapFollowers,sx:e.clientX,sy:e.clientY,sp,moved:false};
   e.currentTarget.setPointerCapture(e.pointerId);
 }
 
 function canvasDown(e){
-  if(e.target.id==='ca'||e.target.id==='wall'||e.target.id==='wall-wrap')deselectAll();
+  if(e.target.id!=='ca'&&e.target.id!=='wall'&&e.target.id!=='wall-wrap'&&e.target.id!=='lasso')return;
+  deselectAll();
+  if(e.button!==0)return;
+  // Start lasso
+  const wallEl=document.getElementById('wall');
+  if(!wallEl)return;
+  const r=wallEl.getBoundingClientRect();
+  const x0=(e.clientX-r.left)/S.scale;
+  const y0=(e.clientY-r.top)/S.scale;
+  S.lasso={x0,y0,x1:x0,y1:y0,px:e.clientX,py:e.clientY};
+  const lassoEl=document.getElementById('lasso');
+  if(lassoEl){lassoEl.style.display='none';}
 }
 
 function onDocMove(e){
+  // Cancel detach timer if user starts moving
+  if(_detachTimer&&S.drag&&!S.drag.detached){
+    const dx2=e.clientX-(S.drag?.sx||e.clientX);
+    const dy2=e.clientY-(S.drag?.sy||e.clientY);
+    if(Math.abs(dx2)>6||Math.abs(dy2)>6){clearTimeout(_detachTimer);_detachTimer=null;}
+  }
+  // Lasso drag
+  if(S.lasso&&!S.drag){
+    const wallEl=document.getElementById('wall');if(!wallEl)return;
+    const r=wallEl.getBoundingClientRect();
+    S.lasso.x1=(e.clientX-r.left)/S.scale;
+    S.lasso.y1=(e.clientY-r.top)/S.scale;
+    const lx=Math.min(S.lasso.x0,S.lasso.x1)*S.scale;
+    const ly=Math.min(S.lasso.y0,S.lasso.y1)*S.scale;
+    const lw=Math.abs(S.lasso.x1-S.lasso.x0)*S.scale;
+    const lh=Math.abs(S.lasso.y1-S.lasso.y0)*S.scale;
+    const lassoEl=document.getElementById('lasso');
+    if(lassoEl&&lw>4){
+      lassoEl.style.cssText=`display:block;position:absolute;left:${lx}px;top:${ly}px;width:${lw}px;height:${lh}px;border:2px dashed rgba(80,120,255,.7);background:rgba(80,120,255,.08);pointer-events:none;box-sizing:border-box`;
+    }
+    return;
+  }
   if(!S.drag)return;
   const dx=(e.clientX-S.drag.sx)/S.scale;
   const dy=(e.clientY-S.drag.sy)/S.scale;
@@ -777,6 +850,29 @@ function onDocMove(e){
 }
 
 function onDocUp(){
+  if(_detachTimer){clearTimeout(_detachTimer);_detachTimer=null;}
+  // Finish lasso
+  if(S.lasso&&!S.drag){
+    const lassoEl=document.getElementById('lasso');
+    if(lassoEl)lassoEl.style.display='none';
+    const lx0=Math.min(S.lasso.x0,S.lasso.x1);
+    const lx1=Math.max(S.lasso.x0,S.lasso.x1);
+    const ly0=Math.min(S.lasso.y0,S.lasso.y1);
+    const ly1=Math.max(S.lasso.y0,S.lasso.y1);
+    if(lx1-lx0>1||ly1-ly0>1){
+      S.pieces.forEach(p=>{
+        if(p.locked)return;
+        const px0=p.x,px1=p.x+p.w,py0=p.y,py1=p.y+p.h;
+        const intersects=!(px1<lx0||px0>lx1||py1<ly0||py0>ly1);
+        if(intersects)S.sel.add(p.id);
+      });
+      if(S.sel.size)showPiecePanel();
+      refreshSel();updatePropsPanel();updateStatus();
+    }
+    S.lasso=null;
+    return;
+  }
+  S.lasso=null;
   if(!S.drag)return;
   hideTip();S.drag=null;updatePropsPanel();updateStatus();
 }
@@ -1014,12 +1110,12 @@ function updatePropsPanel(){
     const phs=document.getElementById('p-hanging-single');
     const htype=p.hangingType||'dring';
     if(pht)pht.value=htype;
-    const isDring=htype==='dring';
-    if(phd)phd.style.display=isDring?'flex':'none';
-    if(phs)phs.style.display=isDring?'none':'';
+    _syncPieceHangingFields(htype);
     if(pho)pho.value=p.hangingOffsetTop??'';
     if(phi)phi.value=p.hangingInset??'';
     if(pho2)pho2.value=p.hangingOffsetTop??'';
+    const phl=document.getElementById('p-hanging-ledge');
+    if(phl)phl.value=p.hangingLedgeThickness??'';
   }else if(p.type==='shelf'&&shelfPnl){
     shelfPnl.classList.remove('hide');
     const sc=document.getElementById('p-shelf-color-swatches');
@@ -1067,7 +1163,7 @@ function populateShelfLinkList(shelf){
   if(!others.length){container.innerHTML='<div style="font-size:10px;color:var(--muted)">No other shelves on wall.</div>';return;}
   container.innerHTML='';
   others.forEach(s=>{
-    const linked=shelf.gid&&s.gid&&shelf.gid===s.gid;
+    const linked=shelf.lid!=null&&s.lid!=null&&shelf.lid===s.lid;
     const row=document.createElement('div');
     row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:3px 0';
     row.innerHTML=`<span style="font-size:11px">${esc(s.label)}</span><button class="btn${linked?' on':''}" style="font-size:10px;padding:2px 8px">${linked?'Unlink':'Link'}</button>`;
@@ -1083,16 +1179,49 @@ function setShelfColor(hex){
 function toggleShelfLink(idA,idB){
   const a=getPiece(idA);const b=getPiece(idB);if(!a||!b)return;
   pushUndo();
-  const linked=a.gid&&b.gid&&a.gid===b.gid;
+  const linked=a.lid!=null&&a.lid===b.lid;
   if(linked){
-    if(a.gid&&S.groups[a.gid]){S.groups[a.gid].delete(idA);S.groups[a.gid].delete(idB);if(S.groups[a.gid].size<2)delete S.groups[a.gid];}
-    a.gid=null;b.gid=null;
+    // Unlink: remove both from the link group
+    const lid=a.lid;
+    if(S.links[lid]){S.links[lid].delete(idA);S.links[lid].delete(idB);if(S.links[lid].size<2)delete S.links[lid];}
+    a.lid=null;b.lid=null;
   }else{
-    if(a.gid&&S.groups[a.gid]){S.groups[a.gid].add(idB);b.gid=a.gid;}
-    else if(b.gid&&S.groups[b.gid]){S.groups[b.gid].add(idA);a.gid=b.gid;}
-    else{const gid=S.ngid++;S.groups[gid]=new Set([idA,idB]);a.gid=gid;b.gid=gid;}
+    // Link: join or create link group, then snap b to same height and butt against group
+    if(a.lid!=null&&S.links[a.lid]){S.links[a.lid].add(idB);b.lid=a.lid;}
+    else if(b.lid!=null&&S.links[b.lid]){S.links[b.lid].add(idA);a.lid=b.lid;}
+    else{const lid=S.nlid++;S.links[lid]=new Set([idA,idB]);a.lid=lid;b.lid=lid;}
+    // Snap all to same Y and arrange touching
+    snapLinkedShelvesToAlign(a.lid??b.lid);
   }
-  renderPiece(a);renderPiece(b);updatePropsPanel();
+  const allInLink=getLinkMembers(a.lid??b.lid);
+  allInLink.forEach(p=>{renderPiece(p);});
+  updatePropsPanel();
+}
+function getLinkMembers(lid){
+  if(lid==null||!S.links[lid])return[];
+  return [...S.links[lid]].map(id=>getPiece(id)).filter(Boolean);
+}
+function snapLinkedShelvesToAlign(lid){
+  const members=getLinkMembers(lid);if(members.length<2)return;
+  // Use the first selected/anchor piece's Y as the canonical height
+  const anchor=members.find(p=>S.sel.has(p.id))||members[0];
+  const targetY=anchor.y;
+  // Sort by current X position
+  members.forEach(p=>{p.y=targetY;});
+  members.sort((a,b)=>a.x-b.x);
+  // Reposition so they touch: anchor stays, others butt up against it
+  const anchorIdx=members.findIndex(p=>p.id===anchor.id);
+  // Pieces to the right of anchor
+  for(let i=anchorIdx+1;i<members.length;i++){
+    members[i].x=members[i-1].x+members[i-1].w;
+    members[i].y=targetY;
+  }
+  // Pieces to the left of anchor
+  for(let i=anchorIdx-1;i>=0;i--){
+    members[i].x=members[i+1].x-members[i].w;
+    members[i].y=targetY;
+  }
+  members.forEach(p=>{renderPiece(p);});
 }
 function setProp(key,val){
   if(S.sel.size!==1)return;
@@ -1399,9 +1528,14 @@ function syncLibCategoryUI_hanging(isArt){
 }
 function syncLibHangingUI(){
   const type=document.getElementById('lib-hanging-type')?.value||'dring';
-  const isDring=type==='dring';
+  const isDring=type==='dring'||type==='keyhole';
+  const isSingle=type==='sawtooth'||type==='wire';
+  const isOver=type==='overhang';
   document.getElementById('lib-hanging-dring-fields').style.display=isDring?'flex':'none';
-  document.getElementById('lib-hanging-single-fields').style.display=isDring?'none':'';
+  document.getElementById('lib-hanging-single-fields').style.display=isSingle?'':'none';
+  document.getElementById('lib-hanging-overhang-fields').style.display=isOver?'':'none';
+  const lbl=document.getElementById('lib-hanging-single-lbl');
+  if(lbl)lbl.textContent=type==='wire'?'Wire sag from top (in)':'Offset from top (in)';
 }
 function calcMountPoints(piece){
   const type=piece.hangingType||(piece.type==='shelf'?'shelf':'dring');
@@ -1411,15 +1545,17 @@ function calcMountPoints(piece){
     const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:piece.h*0.5;
     pts.push({x:piece.x+inset,y:piece.y+dy,label:'L screw'});
     if(piece.w>8)pts.push({x:piece.x+piece.w-inset,y:piece.y+dy,label:'R screw'});
-  }else if(type==='dring'){
+  }else if(type==='dring'||type==='keyhole'){
+    const lbl=type==='keyhole'?'L keyhole':'L screw';
+    const lbl2=type==='keyhole'?'R keyhole':'R screw';
     const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:Math.max(1.5,Math.min(piece.h*0.25,4));
     const inset=piece.hangingInset!=null?piece.hangingInset:Math.min(3,Math.max(1.5,piece.w*0.18));
     const my=piece.y+dy;
     if(piece.w<=7){
       pts.push({x:piece.x+piece.w/2,y:my,label:'Center'});
     }else{
-      pts.push({x:piece.x+inset,y:my,label:'L screw'});
-      pts.push({x:piece.x+piece.w-inset,y:my,label:'R screw'});
+      pts.push({x:piece.x+inset,y:my,label:lbl});
+      pts.push({x:piece.x+piece.w-inset,y:my,label:lbl2});
     }
   }else if(type==='sawtooth'){
     const dy=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:1.5;
@@ -1427,6 +1563,11 @@ function calcMountPoints(piece){
   }else if(type==='wire'){
     const sag=piece.hangingOffsetTop!=null?piece.hangingOffsetTop:2;
     pts.push({x:piece.x+piece.w/2,y:piece.y+sag,label:'Hook'});
+  }else if(type==='overhang'){
+    const ledge=piece.hangingLedgeThickness!=null?piece.hangingLedgeThickness:0.75;
+    // Nail/screw sits at the top of the piece (frame rests its ledge on screw head)
+    // Mount Y = top of piece; ledge thickness tells you how far the screw protrudes
+    pts.push({x:piece.x+piece.w/2,y:piece.y,label:`Nail (ledge ${ledge}")`});
   }
   return pts;
 }
@@ -1436,9 +1577,17 @@ function setPieceHangingType(val){
   if(S.sel.size!==1)return;
   const p=getPiece([...S.sel][0]);if(!p)return;
   p.hangingType=val;
-  const isDring=val==='dring';
+  _syncPieceHangingFields(val);
+}
+function _syncPieceHangingFields(type){
+  const isDring=type==='dring'||type==='keyhole';
+  const isSingle=type==='sawtooth'||type==='wire';
+  const isOver=type==='overhang';
   document.getElementById('p-hanging-dring').style.display=isDring?'flex':'none';
-  document.getElementById('p-hanging-single').style.display=isDring?'none':'';
+  document.getElementById('p-hanging-single').style.display=isSingle?'':'none';
+  document.getElementById('p-hanging-overhang').style.display=isOver?'':'none';
+  const lbl=document.getElementById('p-hanging-single-lbl');
+  if(lbl)lbl.textContent=type==='wire'?'Wire sag from top (in)':'Offset from top (in)';
 }
 function setPieceHangingOffset(val){
   if(S.sel.size!==1)return;
@@ -1449,6 +1598,11 @@ function setPieceHangingInset(val){
   if(S.sel.size!==1)return;
   const p=getPiece([...S.sel][0]);if(!p)return;
   p.hangingInset=val===''||val==null?null:parseFloat(val)||null;
+}
+function setPieceHangingLedge(val){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p)return;
+  p.hangingLedgeThickness=val===''||val==null?null:parseFloat(val)||null;
 }
 
 // ── Hanging guide ──
@@ -1612,8 +1766,10 @@ async function confirmAddToLibrary(){
     const isDring=htype==='dring';
     const rawOffset=parseFloat(document.getElementById(isDring?'lib-hanging-offset':'lib-hanging-offset2')?.value);
     const rawInset=parseFloat(document.getElementById('lib-hanging-inset')?.value);
+    const rawLedge=parseFloat(document.getElementById('lib-hanging-ledge')?.value);
     itemData.hangingOffsetTop=isNaN(rawOffset)?null:rawOffset;
     itemData.hangingInset=isDring&&!isNaN(rawInset)?rawInset:null;
+    itemData.hangingLedgeThickness=htype==='overhang'&&!isNaN(rawLedge)?rawLedge:null;
     let imgUrl=libImgData;
     if(imgUrl&&imgUrl.startsWith('data:')&&S.cloudReady){
       const saveBtn=document.getElementById('btn-lib-save');
@@ -1738,7 +1894,7 @@ function addFromLibrary(item){
   if(cat==='shelf'){
     piece={id:S.nid++,type:'shelf',x:pos.x,y:pos.y,w:item.w,h:item.h,
       color:item.color?.hex||'#7a6548',label:item.name,shelfType:item.shelfType||'shelf',
-      gid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id};
+      gid:null,lid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id};
     item.placedId=piece.id;persistLibrary();
     S.pieces.push(piece);mkShelfEl(piece);
   }else if(cat==='decor'){
@@ -1755,7 +1911,7 @@ function addFromLibrary(item){
       libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
       snapToShelf:true,snappedToShelfId:null,
       frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
-      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null};
+      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,hangingLedgeThickness:item.hangingLedgeThickness??null};
     item.placedId=piece.id;persistLibrary();
     S.pieces.push(piece);mkArtEl(piece);
   }
@@ -2384,7 +2540,7 @@ function addPieceFromDrawerAtPos(data,wx,wy){
       libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
       snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
       frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
-      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,
+      hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,hangingLedgeThickness:item.hangingLedgeThickness??null,
     };
     item.placedId=piece.id;persistLibrary();
     S.pieces.push(piece);mkArtEl(piece);
@@ -2412,7 +2568,7 @@ function addPieceFromDrawerAtPos(data,wx,wy){
       x:clamp(wx-l.w/2,0,S.wall.w-l.w),y:clamp(wy-l.h/2,0,S.wall.h-l.h),
       w:l.w,h:l.h,color:'#7a6548',
       label:l.n,shelfType:l.type||'shelf',
-      gid:null,zi:S.pieces.length+1,
+      gid:null,lid:null,zi:S.pieces.length+1,
       conflict:false,gw:false,owarn:false,ywarn:false
     };
     S.pieces.push(piece);mkShelfEl(piece);
@@ -2425,7 +2581,7 @@ function addPieceFromDrawerAtPos(data,wx,wy){
       x:clamp(wx-item.w/2,0,S.wall.w-item.w),y:clamp(wy-item.h/2,0,S.wall.h-item.h),
       w:item.w,h:item.h,color:item.color?.hex||'#7a6548',
       label:item.name,shelfType:item.shelfType||'shelf',
-      gid:null,zi:S.pieces.length+1,
+      gid:null,lid:null,zi:S.pieces.length+1,
       conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
     };
     item.placedId=piece.id;persistLibrary();
@@ -2468,7 +2624,7 @@ function addSelectedFromDrawer(){
         libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
         snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
         frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
-        hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,
+        hangingType:item.hangingType||'dring',hangingOffsetTop:item.hangingOffsetTop??null,hangingInset:item.hangingInset??null,hangingLedgeThickness:item.hangingLedgeThickness??null,
       };
       item.placedId=piece.id;S.pieces.push(piece);mkArtEl(piece);newIds.push(piece.id);
     }else if(parts[0]==='frame'){
@@ -2493,7 +2649,7 @@ function addSelectedFromDrawer(){
         id:S.nid++,type:'shelf',x:pos.x,y:pos.y,
         w:l.w,h:l.h,color:'#7a6548',
         label:l.n,shelfType:l.type||'shelf',
-        gid:null,zi:S.pieces.length+1,
+        gid:null,lid:null,zi:S.pieces.length+1,
         conflict:false,gw:false,owarn:false,ywarn:false
       };
       S.pieces.push(piece);mkShelfEl(piece);newIds.push(piece.id);
@@ -2505,7 +2661,7 @@ function addSelectedFromDrawer(){
         id:S.nid++,type:'shelf',x:pos.x,y:pos.y,
         w:item.w,h:item.h,color:item.color?.hex||'#7a6548',
         label:item.name,shelfType:item.shelfType||'shelf',
-        gid:null,zi:S.pieces.length+1,
+        gid:null,lid:null,zi:S.pieces.length+1,
         conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
       };
       item.placedId=piece.id;S.pieces.push(piece);mkShelfEl(piece);newIds.push(piece.id);

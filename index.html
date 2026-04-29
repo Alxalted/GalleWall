@@ -186,8 +186,10 @@
           <label>Type</label>
           <select id="p-hanging-type" style="margin-left:auto;font-size:10px" onchange="setPieceHangingType(this.value)">
             <option value="dring">D-Rings</option>
+            <option value="keyhole">Keyhole Brackets</option>
             <option value="sawtooth">Sawtooth</option>
             <option value="wire">Picture Wire</option>
+            <option value="overhang">Over-Nail / Ledge Rest</option>
           </select>
         </div>
         <div id="p-hanging-dring" style="display:flex;gap:8px;margin-bottom:4px">
@@ -201,8 +203,13 @@
           </div>
         </div>
         <div id="p-hanging-single" style="display:none;margin-bottom:4px">
-          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
-          <input type="number" id="p-hanging-offset2" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:80px;text-align:center" onchange="setPieceHangingOffset(this.value)">
+          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px" id="p-hanging-single-lbl">Offset from top (in)</label>
+          <input type="number" id="p-hanging-offset2" placeholder="auto" min="0" step="0.25" class="sm" style="width:80px;text-align:center" onchange="setPieceHangingOffset(this.value)">
+        </div>
+        <div id="p-hanging-overhang" style="display:none;margin-bottom:4px">
+          <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Upper ledge thickness (in)</label>
+          <input type="number" id="p-hanging-ledge" placeholder="0.75" min="0.1" step="0.1" class="sm" style="width:80px;text-align:center" onchange="setPieceHangingLedge(this.value)">
+          <div class="hint" style="margin-top:3px">Piece rests its top rail on the nail/screw.</div>
         </div>
         <div class="hint">Blank = auto-calculate from dimensions.</div>
       </div>
@@ -210,8 +217,8 @@
       <div class="pnl hide" id="p-shelf-pnl">
         <div class="ptitle">Shelf Color</div>
         <div class="color-swatch-row" id="p-shelf-color-swatches"></div>
-        <div class="ptitle" style="margin-top:12px">Link Ledges</div>
-        <div class="hint" style="margin-bottom:8px">Linked shelves move together as one unit.</div>
+        <div class="ptitle" style="margin-top:12px">Link Shelves</div>
+        <div class="hint" style="margin-bottom:8px">Linked shelves lock to the same height and move as one continuous ledge. Independent from grouping.</div>
         <div id="p-shelf-link-list"></div>
       </div>
       <!-- Zone options -->
@@ -231,6 +238,7 @@
 <div id="ca" onpointerdown="canvasDown(event)">
   <div id="wall-wrap">
     <div id="wall"></div>
+    <div id="lasso" style="display:none;position:absolute;border:2px dashed rgba(80,120,255,.7);background:rgba(80,120,255,.08);pointer-events:none;box-sizing:border-box"></div>
   </div>
 </div>
 
@@ -435,8 +443,10 @@
       <div style="font-size:10px;color:var(--muted);margin-bottom:5px">Hanging Hardware</div>
       <select id="lib-hanging-type" onchange="syncLibHangingUI()" style="margin-bottom:6px">
         <option value="dring">D-Rings (recommended)</option>
+        <option value="keyhole">Keyhole Brackets</option>
         <option value="sawtooth">Sawtooth</option>
         <option value="wire">Picture Wire</option>
+        <option value="overhang">Over-Nail / Ledge Rest</option>
       </select>
       <div id="lib-hanging-dring-fields" style="display:flex;gap:8px;margin-bottom:4px">
         <div style="flex:1">
@@ -449,8 +459,13 @@
         </div>
       </div>
       <div id="lib-hanging-single-fields" style="margin-bottom:4px;display:none">
-        <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Offset from top (in)</label>
-        <input type="number" id="lib-hanging-offset2" placeholder="auto" min="0.5" step="0.25" class="sm" style="width:80px;text-align:center">
+        <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px" id="lib-hanging-single-lbl">Offset from top (in)</label>
+        <input type="number" id="lib-hanging-offset2" placeholder="auto" min="0" step="0.25" class="sm" style="width:80px;text-align:center">
+      </div>
+      <div id="lib-hanging-overhang-fields" style="margin-bottom:4px;display:none">
+        <label style="font-size:9px;color:var(--dim);display:block;margin-bottom:2px">Upper ledge thickness (in)</label>
+        <input type="number" id="lib-hanging-ledge" placeholder="0.75" min="0.1" step="0.1" class="sm" style="width:80px;text-align:center">
+        <div class="hint" style="margin-top:3px">Piece rests its top rail on the nail/screw.</div>
       </div>
       <div class="hint">Leave blank for auto-calculation from piece dimensions.</div>
     </div>
