@@ -173,6 +173,38 @@
         </div>
         <div class="hint" style="margin-top:4px">Pieces closer than this highlight amber.</div>
       </div>
+      <!-- Art-piece panel (shown when 1 art piece selected) -->
+      <div class="pnl hide" id="p-art-pnl">
+        <div class="ptitle">Frame Overlay</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Show Frame Border</span>
+          <label class="toggle"><input type="checkbox" id="p-frame-visible" onchange="togglePieceFrame()"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div id="p-frame-opts" class="hide">
+          <div style="font-size:10px;color:var(--muted);margin:8px 0 4px">Frame Color</div>
+          <div class="color-swatch-row" id="p-frame-color-swatches"></div>
+          <div style="font-size:10px;color:var(--muted);margin:8px 0 4px">Thickness</div>
+          <div class="bgrid" id="p-frame-thickness">
+            <button class="btn" data-thickness="0.5">½"</button>
+            <button class="btn" data-thickness="1">1"</button>
+            <button class="btn" data-thickness="1.5">1½"</button>
+            <button class="btn" data-thickness="2">2"</button>
+            <button class="btn" data-thickness="3">3"</button>
+          </div>
+        </div>
+        <div class="ptitle" style="margin-top:12px">Shelf Snapping</div>
+        <div class="toggle-row">
+          <span class="toggle-label">Snap to Shelves &amp; Ledges</span>
+          <label class="toggle"><input type="checkbox" id="p-snap-shelf" onchange="togglePieceSnap()"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
+        </div>
+        <div class="hint" style="margin-top:4px">When on, piece snaps to shelf top when dragged near it and rides along when the shelf moves.</div>
+      </div>
+      <!-- Shelf panel (shown when 1 shelf selected) -->
+      <div class="pnl hide" id="p-shelf-pnl">
+        <div class="ptitle">Link Ledges</div>
+        <div class="hint" style="margin-bottom:8px">Linked shelves move together as one unit.</div>
+        <div id="p-shelf-link-list"></div>
+      </div>
       <div class="pnl hide" id="p-zone-pnl">
         <div class="ptitle">Exclusion Zone</div>
         <button class="btn btn-f accent" id="p-lock-btn" onclick="toggleZoneLock()">🔒 Lock Zone</button>

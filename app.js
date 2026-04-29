@@ -474,11 +474,12 @@ function quickAdd(f,withPhoto){
     x:pos.x,y:pos.y,w:f.w,h:f.h,shape:'rect',color:'#2a2a2a',
     img:null,imgOX:0,imgOY:0,imgZ:1,
     label:(f.name||f.n||'Frame'),
-    gid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false
+    gid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false,
+    snapToShelf:true,snappedToShelfId:null,frameVisible:false,frameColor:null,frameThickness:1,
   };
   S.pieces.push(piece);mkArtEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
   if(withPhoto)openCamForPiece(piece.id);
 }
 
@@ -494,7 +495,7 @@ function addZone(){
   };
   S.pieces.push(piece);mkZoneEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
 }
 
 function toggleZoneLock(){
@@ -516,7 +517,7 @@ function quickAddFixture(f){
   };
   S.pieces.push(piece);mkFixtureEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
 }
 
 function quickAddShelf(l){
@@ -531,7 +532,7 @@ function quickAddShelf(l){
   };
   S.pieces.push(piece);mkShelfEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
 }
 
 function addCustomArtwork(withPhoto){
@@ -547,11 +548,12 @@ function addCustomArtwork(withPhoto){
     x:pos.x,y:pos.y,w,h,shape,color:'#2a2a2a',
     img:null,imgOX:0,imgOY:0,imgZ:1,
     label:'Frame '+n,gid:null,zi:S.pieces.length+1,
-    conflict:false,gw:false,owarn:false,ywarn:false
+    conflict:false,gw:false,owarn:false,ywarn:false,
+    snapToShelf:true,snappedToShelfId:null,frameVisible:false,frameColor:null,frameThickness:1,
   };
   S.pieces.push(piece);mkArtEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
   if(withPhoto)openCamForPiece(piece.id);
 }
 
@@ -571,7 +573,7 @@ function addShelf(){
   };
   S.pieces.push(piece);mkShelfEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');
+  select(piece.id,false);
 }
 
 function openCamForPiece(pid){
@@ -707,8 +709,18 @@ function pieceDown(e,id){
   if(S.selMode)return;
   const sp={};
   S.sel.forEach(sid=>{const q=getPiece(sid);if(q)sp[sid]={x:q.x,y:q.y};});
+  // Collect art pieces snapped to any shelf in the selection so they ride along
+  const shelfIdsInSel=[...S.sel].filter(sid=>getPiece(sid)?.type==='shelf');
+  const snapFollowers=[];
+  if(shelfIdsInSel.length){
+    S.pieces.forEach(a=>{
+      if(a.type==='art'&&a.snappedToShelfId&&shelfIdsInSel.includes(a.snappedToShelfId)&&!sp[a.id]){
+        sp[a.id]={x:a.x,y:a.y};snapFollowers.push(a.id);
+      }
+    });
+  }
   pushUndo();
-  S.drag={ids:[...S.sel],sx:e.clientX,sy:e.clientY,sp,moved:false};
+  S.drag={ids:[...S.sel],snapFollowers,sx:e.clientX,sy:e.clientY,sp,moved:false};
   e.currentTarget.setPointerCapture(e.pointerId);
 }
 
@@ -742,6 +754,33 @@ function onDocMove(e){
     p.y=clamp(sp.y+dy,0,S.wall.h-p.h);
     const el=document.getElementById('p'+id);
     if(el){el.style.left=(p.x*S.scale)+'px';el.style.top=(p.y*S.scale)+'px';}
+  });
+  // Move art pieces that are snapped to a shelf being dragged
+  (S.drag.snapFollowers||[]).forEach(id=>{
+    const p=getPiece(id);const sp=S.drag.sp[id];if(!p||!sp)return;
+    p.x=clamp(sp.x+dx,0,S.wall.w-p.w);
+    p.y=clamp(sp.y+dy,0,S.wall.h-p.h);
+    const el=document.getElementById('p'+id);
+    if(el){el.style.left=(p.x*S.scale)+'px';el.style.top=(p.y*S.scale)+'px';}
+  });
+  // Snap-to-shelf: art pieces with snapToShelf=true snap to nearby shelf tops
+  const SNAP_IN=3;
+  const shelves=S.pieces.filter(q=>q.type==='shelf');
+  S.drag.ids.forEach(id=>{
+    const p=getPiece(id);if(!p||p.type!=='art'||p.snapToShelf===false)return;
+    let snapped=false;
+    for(const s of shelves){
+      if(p.x+p.w<=s.x||p.x>=s.x+s.w)continue; // no horizontal overlap
+      const dist=(p.y+p.h)-s.y;
+      if(Math.abs(dist)<SNAP_IN){
+        p.y=s.y-p.h;
+        p.snappedToShelfId=s.id;
+        const el=document.getElementById('p'+id);
+        if(el)el.style.top=(p.y*S.scale)+'px';
+        snapped=true;break;
+      }
+    }
+    if(!snapped)p.snappedToShelfId=null;
   });
   checkConflicts();renderConflicts();
   showTip(e,dx,dy);
@@ -795,6 +834,10 @@ function renderPiece(p){
     el.style.zIndex=S.sel.has(p.id)?500:(p.zi||3);
   }else if(p.type==='art'){
     el.style.backgroundColor=p.color;
+    if(p.frameVisible){
+      const thickPx=Math.max(1,Math.round((p.frameThickness||1)*S.scale));
+      el.style.boxShadow=`inset 0 0 0 ${thickPx}px ${p.frameColor||p.color||'#2a2a2a'}`;
+    }else{el.style.boxShadow='';}
     const warn=p.owarn?' owarn':p.ywarn?' ywarn':'';
     el.className='pc'+(p.shape==='oval'?' oval':'')+(S.sel.has(p.id)?' sel':'')+(p.conflict?' conflict':'')+(p.gw&&S.gaps?' gw':'')+(p.gid?' grp':'')+warn;
     const img=document.getElementById('pi'+p.id);
@@ -833,7 +876,7 @@ function checkConflicts(){
   S.pieces.forEach(p=>{p.conflict=false;p.gw=false;p.owarn=false;p.ywarn=false;});
   for(let i=0;i<arts.length;i++)for(let j=i+1;j<arts.length;j++)
     if(rectsOverlap(arts[i],arts[j])){arts[i].conflict=true;arts[j].conflict=true;}
-  arts.forEach(a=>{shelves.forEach(s=>{if(rectsOverlap(a,s)){a.conflict=true;s.conflict=true;}});});
+  arts.forEach(a=>{if(a.snapToShelf===false)shelves.forEach(s=>{if(rectsOverlap(a,s)){a.conflict=true;s.conflict=true;}});});
   arts.forEach(a=>{zones.forEach(z=>{if(rectsOverlap(a,z))a.owarn=true;});});
   arts.forEach(a=>{fixtures.forEach(f=>{if(rectsOverlap(a,f))a.ywarn=true;});});
   const mg=S.minGap;
@@ -910,18 +953,105 @@ function ctrV(){const ps=getSelPieces();if(!ps.length)return;ps.forEach(p=>p.y=c
 // PROPERTIES PANEL
 // ══════════════════════════════════════════
 function updatePropsPanel(){
-  const zonePnl=document.getElementById('p-zone-pnl');if(!zonePnl)return;
-  if(S.sel.size===1){
-    const p=getPiece([...S.sel][0]);
-    if(p?.type==='zone'){
-      zonePnl.classList.remove('hide');
-      const lockBtn=document.getElementById('p-lock-btn');
-      lockBtn.textContent=p.locked?'🔓 Unlock Zone':'🔒 Lock Zone';
-      lockBtn.className='btn btn-f '+(p.locked?'danger':'accent');
-      return;
-    }
-  }
+  const zonePnl=document.getElementById('p-zone-pnl');
+  const artPnl=document.getElementById('p-art-pnl');
+  const shelfPnl=document.getElementById('p-shelf-pnl');
+  if(!zonePnl)return;
   zonePnl.classList.add('hide');
+  artPnl?.classList.add('hide');
+  shelfPnl?.classList.add('hide');
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p)return;
+  if(p.type==='zone'){
+    zonePnl.classList.remove('hide');
+    const lockBtn=document.getElementById('p-lock-btn');
+    lockBtn.textContent=p.locked?'🔓 Unlock Zone':'🔒 Lock Zone';
+    lockBtn.className='btn btn-f '+(p.locked?'danger':'accent');
+  }else if(p.type==='art'&&artPnl){
+    artPnl.classList.remove('hide');
+    // Frame visible toggle
+    const fv=document.getElementById('p-frame-visible');
+    if(fv)fv.checked=!!p.frameVisible;
+    document.getElementById('p-frame-opts')?.classList.toggle('hide',!p.frameVisible);
+    // Frame color swatches
+    const sc=document.getElementById('p-frame-color-swatches');
+    if(sc){
+      sc.innerHTML='';
+      const active=p.frameColor||p.color||'#2a2a2a';
+      COLOR_PALETTE.forEach(c=>{
+        const sw=document.createElement('div');
+        sw.className='csw'+(active===c.hex?' on':'');
+        sw.style.background=c.hex;sw.title=c.name;
+        sw.addEventListener('click',()=>setFrameColor(c.hex));
+        sc.appendChild(sw);
+      });
+    }
+    // Thickness buttons
+    document.querySelectorAll('#p-frame-thickness .btn').forEach(btn=>{
+      const t=parseFloat(btn.dataset.thickness);
+      btn.classList.toggle('on',t===(p.frameThickness||1));
+      btn.onclick=()=>setFrameThickness(t);
+    });
+    // Snap toggle
+    const sn=document.getElementById('p-snap-shelf');
+    if(sn)sn.checked=p.snapToShelf!==false;
+  }else if(p.type==='shelf'&&shelfPnl){
+    shelfPnl.classList.remove('hide');
+    populateShelfLinkList(p);
+  }
+}
+function togglePieceFrame(){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p||p.type!=='art')return;
+  pushUndo();
+  p.frameVisible=!p.frameVisible;
+  if(p.frameVisible&&!p.frameColor)p.frameColor=p.color||'#2a2a2a';
+  renderPiece(p);updatePropsPanel();
+}
+function setFrameColor(hex){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p||p.type!=='art')return;
+  pushUndo();p.frameColor=hex;renderPiece(p);updatePropsPanel();
+}
+function setFrameThickness(t){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p||p.type!=='art')return;
+  pushUndo();p.frameThickness=t;renderPiece(p);updatePropsPanel();
+}
+function togglePieceSnap(){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p||p.type!=='art')return;
+  p.snapToShelf=p.snapToShelf===false?true:false;
+  if(!p.snapToShelf)p.snappedToShelfId=null;
+  checkConflicts();renderConflicts();updatePropsPanel();
+}
+function populateShelfLinkList(shelf){
+  const container=document.getElementById('p-shelf-link-list');if(!container)return;
+  const others=S.pieces.filter(q=>q.type==='shelf'&&q.id!==shelf.id);
+  if(!others.length){container.innerHTML='<div style="font-size:10px;color:var(--muted)">No other shelves on wall.</div>';return;}
+  container.innerHTML='';
+  others.forEach(s=>{
+    const linked=shelf.gid&&s.gid&&shelf.gid===s.gid;
+    const row=document.createElement('div');
+    row.style.cssText='display:flex;justify-content:space-between;align-items:center;padding:3px 0';
+    row.innerHTML=`<span style="font-size:11px">${esc(s.label)}</span><button class="btn${linked?' on':''}" style="font-size:10px;padding:2px 8px">${linked?'Unlink':'Link'}</button>`;
+    row.querySelector('button').addEventListener('click',()=>toggleShelfLink(shelf.id,s.id));
+    container.appendChild(row);
+  });
+}
+function toggleShelfLink(idA,idB){
+  const a=getPiece(idA);const b=getPiece(idB);if(!a||!b)return;
+  pushUndo();
+  const linked=a.gid&&b.gid&&a.gid===b.gid;
+  if(linked){
+    if(a.gid&&S.groups[a.gid]){S.groups[a.gid].delete(idA);S.groups[a.gid].delete(idB);if(S.groups[a.gid].size<2)delete S.groups[a.gid];}
+    a.gid=null;b.gid=null;
+  }else{
+    if(a.gid&&S.groups[a.gid]){S.groups[a.gid].add(idB);b.gid=a.gid;}
+    else if(b.gid&&S.groups[b.gid]){S.groups[b.gid].add(idA);a.gid=b.gid;}
+    else{const gid=S.ngid++;S.groups[gid]=new Set([idA,idB]);a.gid=gid;b.gid=gid;}
+  }
+  renderPiece(a);renderPiece(b);updatePropsPanel();
 }
 function setProp(key,val){
   if(S.sel.size!==1)return;
@@ -1321,12 +1451,14 @@ function addFromLibrary(item){
     w:item.w,h:item.h,shape:'rect',color:'#2a2a2a',
     img:item.img||null,imgOX:0,imgOY:0,imgZ:1,
     label:item.name,gid:null,zi:S.pieces.length+1,
-    libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false
+    libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
+    snapToShelf:true,snappedToShelfId:null,
+    frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
   };
   item.placedId=piece.id;persistLibrary();
   S.pieces.push(piece);mkArtEl(piece);
   checkConflicts();renderConflicts();updateStatus();
-  select(piece.id,false);switchTab('props');renderLibrary();
+  select(piece.id,false);renderLibrary();
 }
 
 // ══════════════════════════════════════════
