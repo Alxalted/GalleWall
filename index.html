@@ -56,6 +56,8 @@
 <div id="tb">
   <button class="btn" onclick="toggleSidebar()" title="Toggle sidebar">☰</button>
   <div class="tdiv"></div>
+  <button class="btn accent" id="btn-add-open" onclick="openDrawer()" title="Add pieces">+ Add</button>
+  <div class="tdiv"></div>
   <button class="btn" id="btn-undo" onclick="undo()" title="Undo (Cmd+Z)">↩ Undo</button>
   <button class="btn" id="btn-redo" onclick="redo()" title="Redo (Cmd+Shift+Z)">↪ Redo</button>
   <div class="tdiv"></div>
@@ -77,67 +79,46 @@
 
 <!-- SIDEBAR -->
 <div id="sb">
-  <div class="tabs">
-    <div class="tab on" id="t-add" onclick="switchTab('add')">Add</div>
-    <div class="tab" id="t-props" onclick="switchTab('props')">Arrange</div>
-    <div class="tab" id="t-wall" onclick="switchTab('wall')">Wall</div>
-  </div>
   <div id="sb-inner">
 
-    <!-- ADD TAB -->
-    <div class="tc on" id="tc-add">
+    <!-- WALL PANEL (default) -->
+    <div id="panel-wall" class="sb-panel">
       <div class="pnl">
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
-          <div class="ptitle" style="margin:0">My Artwork</div>
-          <button class="btn" style="font-size:10px;padding:3px 7px" onclick="showPage('library')">Manage →</button>
+        <div class="ptitle">Wall Setup</div>
+        <div class="frow">
+          <label>W</label><input type="number" id="wall-w" class="sm" value="120" min="24" max="600">
+          <label>H</label><input type="number" id="wall-h" class="sm" value="96" min="24" max="480">
+          <span class="unit">in</span>
         </div>
-        <div id="wall-lib-list"><div style="font-size:11px;color:var(--muted);text-align:center;padding:12px 0">Library is empty.<br>Go to Library to add artwork.</div></div>
+        <div class="fld"><label>Color</label><input type="color" id="wall-c" value="#f7f3ef" oninput="document.getElementById('wall').style.background=this.value"></div>
+        <button class="btn btn-f accent" onclick="applyWall()">Apply</button>
       </div>
-      <div class="pnl" style="padding:0">
-        <div class="acc-hdr" onclick="toggleAcc('acc-frames')">
-          <span>IKEA Frames</span><span class="fg-arrow">▶</span>
-        </div>
-        <div class="acc-body hide" id="acc-frames">
-          <div id="frame-groups" style="padding:8px 10px 4px"></div>
-          <div style="padding:0 10px 10px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Custom size</div>
-            <div class="frow">
-              <label>W</label><input type="number" id="art-w" class="sm" placeholder="16" min="1" step="0.5">
-              <label>H</label><input type="number" id="art-h" class="sm" placeholder="20" min="1" step="0.5">
-              <span class="unit">in</span>
-            </div>
-            <select id="art-shape" style="margin-bottom:7px;width:100%">
-              <option value="rect">Rectangle</option>
-              <option value="oval">Circle / Oval</option>
-            </select>
-            <div style="display:flex;gap:5px">
-              <button class="btn accent" style="flex:1;justify-content:center" onclick="addCustomArtwork(false)">+ Add</button>
-              <button class="btn gold" style="flex:1;justify-content:center" onclick="addCustomArtwork(true)">📷 + Photo</button>
-            </div>
-          </div>
-        </div>
+      <div class="pnl">
+        <div class="ptitle">Exclusion Zones</div>
+        <div class="hint" style="margin-bottom:8px">Drag corners to resize. Lock when done.</div>
+        <button class="btn btn-f" onclick="addZone()">+ Add Zone</button>
       </div>
-      <div class="pnl" style="padding:0">
-        <div class="acc-hdr" onclick="toggleAcc('acc-shelves')">
-          <span>Shelves &amp; Ledges</span><span class="fg-arrow">▶</span>
-        </div>
-        <div class="acc-body hide" id="acc-shelves">
-          <div id="shelf-preset-list" style="padding:8px 10px 4px"></div>
-          <div style="padding:0 10px 10px">
-            <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Custom shelf</div>
-            <div class="frow">
-              <label>L</label><input type="number" id="shelf-l" class="sm" placeholder="43" min="1" step="0.5">
-              <label>H</label><input type="number" id="shelf-h" class="sm" placeholder="4" min="1" step="0.25">
-              <span class="unit">in</span>
-            </div>
-            <button class="btn btn-f" onclick="addShelf()">+ Add Shelf</button>
-          </div>
-        </div>
+      <div class="pnl">
+        <div class="ptitle">Fixtures</div>
+        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Yellow warning if covered by artwork</div>
+        <div id="fixture-list"></div>
+      </div>
+      <div class="pnl">
+        <div class="ptitle">Saved Layouts</div>
+        <div id="wall-layouts"></div>
+        <button class="btn btn-f gold" onclick="openSave()" style="margin-top:8px">💾 Save Current</button>
       </div>
     </div>
 
-    <!-- ARRANGE TAB -->
-    <div class="tc" id="tc-props">
+    <!-- PIECE PANEL (shown when a piece is selected) -->
+    <div id="panel-piece" class="sb-panel hide">
+      <div class="pnl" style="padding:8px 12px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <button class="panel-back-btn" onclick="deselectAll()">← Wall</button>
+          <div id="pp-piece-label" style="font-size:11px;font-weight:600;color:var(--text);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"></div>
+          <div id="pp-piece-dims" style="font-family:'Space Mono',monospace;font-size:9px;color:var(--muted);white-space:nowrap"></div>
+        </div>
+      </div>
       <div class="pnl">
         <div class="ptitle">Align</div>
         <div class="bgrid">
@@ -173,7 +154,7 @@
         </div>
         <div class="hint" style="margin-top:4px">Pieces closer than this highlight amber.</div>
       </div>
-      <!-- Art-piece panel (shown when 1 art piece selected) -->
+      <!-- Art piece options -->
       <div class="pnl hide" id="p-art-pnl">
         <div class="ptitle">Frame Overlay</div>
         <div class="toggle-row">
@@ -197,49 +178,23 @@
           <span class="toggle-label">Snap to Shelves &amp; Ledges</span>
           <label class="toggle"><input type="checkbox" id="p-snap-shelf" onchange="togglePieceSnap()"><div class="toggle-track"></div><div class="toggle-thumb"></div></label>
         </div>
-        <div class="hint" style="margin-top:4px">When on, piece snaps to shelf top when dragged near it and rides along when the shelf moves.</div>
+        <div class="hint" style="margin-top:4px">Snaps bottom of piece to shelf. Rides with shelf when moved.</div>
       </div>
-      <!-- Shelf panel (shown when 1 shelf selected) -->
+      <!-- Shelf options -->
       <div class="pnl hide" id="p-shelf-pnl">
-        <div class="ptitle">Link Ledges</div>
+        <div class="ptitle">Shelf Color</div>
+        <div class="color-swatch-row" id="p-shelf-color-swatches"></div>
+        <div class="ptitle" style="margin-top:12px">Link Ledges</div>
         <div class="hint" style="margin-bottom:8px">Linked shelves move together as one unit.</div>
         <div id="p-shelf-link-list"></div>
       </div>
+      <!-- Zone options -->
       <div class="pnl hide" id="p-zone-pnl">
         <div class="ptitle">Exclusion Zone</div>
         <button class="btn btn-f accent" id="p-lock-btn" onclick="toggleZoneLock()">🔒 Lock Zone</button>
       </div>
       <div class="pnl">
         <button class="btn btn-f danger" onclick="deleteSelected()">Delete Selected</button>
-      </div>
-    </div>
-
-    <!-- WALL TAB -->
-    <div class="tc" id="tc-wall">
-      <div class="pnl">
-        <div class="ptitle">Wall Setup</div>
-        <div class="frow">
-          <label>W</label><input type="number" id="wall-w" class="sm" value="120" min="24" max="600">
-          <label>H</label><input type="number" id="wall-h" class="sm" value="96" min="24" max="480">
-          <span class="unit">in</span>
-        </div>
-        <div class="fld"><label>Color</label><input type="color" id="wall-c" value="#f7f3ef" oninput="document.getElementById('wall').style.background=this.value"></div>
-        <button class="btn btn-f accent" onclick="applyWall()">Apply</button>
-      </div>
-      <div class="pnl">
-        <div class="ptitle">Exclusion Zones</div>
-        <div class="hint" style="margin-bottom:8px">Drag corners to resize. Lock when done.</div>
-        <button class="btn btn-f" onclick="addZone()">+ Add Zone</button>
-      </div>
-      <div class="pnl">
-        <div class="ptitle">Fixtures</div>
-        <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Yellow warning if covered by artwork</div>
-        <div id="fixture-list"></div>
-      </div>
-      <div class="pnl">
-        <div class="ptitle">Saved Layouts</div>
-        <div id="wall-layouts"></div>
-        <button class="btn btn-f gold" onclick="openSave()" style="margin-top:8px">💾 Save Current</button>
       </div>
     </div>
 
@@ -269,6 +224,71 @@
 
 <!-- DRAG TOOLTIP -->
 <div id="tip"></div>
+
+<!-- ADD DRAWER -->
+<div id="drawer-backdrop" onclick="closeDrawer()"></div>
+<div id="drawer">
+  <div id="drawer-handle-bar" onclick="closeDrawer()"></div>
+  <div id="drawer-dtabs">
+    <button class="dtab on" data-tab="art" onclick="switchDrawerTab('art')">My Art</button>
+    <button class="dtab" data-tab="frames" onclick="switchDrawerTab('frames')">Frames</button>
+    <button class="dtab" data-tab="shelves" onclick="switchDrawerTab('shelves')">Shelves &amp; Ledges</button>
+  </div>
+  <div id="drawer-filters"></div>
+  <div id="drawer-grid"></div>
+  <div id="drawer-footer">
+    <span id="drawer-count">Select pieces to add</span>
+    <button id="drawer-add-btn" class="btn accent" onclick="addSelectedFromDrawer()">Add to Wall</button>
+  </div>
+</div>
+
+<!-- DRAG GHOST (created by JS, this is the template container) -->
+<div id="drag-ghost" style="display:none"></div>
+
+<!-- MODAL: CUSTOM PIECE (from drawer) -->
+<div class="overlay hide" id="m-custom-piece">
+  <div class="modal">
+    <div class="mtitle">Custom Artwork</div>
+    <div class="frow">
+      <label>W</label><input type="number" id="art-w" class="sm" placeholder="16" min="1" step="0.5">
+      <label>H</label><input type="number" id="art-h" class="sm" placeholder="20" min="1" step="0.5">
+      <span class="unit">in</span>
+    </div>
+    <select id="art-shape" style="margin-bottom:10px;width:100%">
+      <option value="rect">Rectangle</option>
+      <option value="oval">Circle / Oval</option>
+    </select>
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-custom-piece')">Cancel</button>
+      <button class="btn gold" onclick="addCustomArtwork(false);closeModal('m-custom-piece')">Add</button>
+      <button class="btn accent" onclick="addCustomArtwork(true);closeModal('m-custom-piece')">📷 Add + Photo</button>
+    </div>
+  </div>
+</div>
+
+<!-- MODAL: CUSTOM SHELF (from drawer) -->
+<div class="overlay hide" id="m-custom-shelf">
+  <div class="modal">
+    <div class="mtitle">Custom Shelf / Ledge</div>
+    <div class="frow">
+      <label>Length</label><input type="number" id="shelf-l" class="sm" placeholder="43" min="1" step="0.5">
+      <label>Height</label><input type="number" id="shelf-h" class="sm" placeholder="4" min="1" step="0.25">
+      <span class="unit">in</span>
+    </div>
+    <div style="margin-bottom:10px">
+      <div style="font-size:10px;color:var(--muted);margin-bottom:6px">Type</div>
+      <div style="display:flex;gap:6px">
+        <button class="btn on" id="shelf-type-btn-shelf" style="flex:1;justify-content:center" onclick="setCustomShelfType('shelf')">Shelf</button>
+        <button class="btn" id="shelf-type-btn-ledge" style="flex:1;justify-content:center" onclick="setCustomShelfType('ledge')">Ledge / Rail</button>
+      </div>
+    </div>
+    <input type="hidden" id="shelf-type-val" value="shelf">
+    <div class="mfooter">
+      <button class="btn" onclick="closeModal('m-custom-shelf')">Cancel</button>
+      <button class="btn gold" onclick="addShelf();closeModal('m-custom-shelf')">Add</button>
+    </div>
+  </div>
+</div>
 
 <!-- FILE INPUTS -->
 <input type="file" id="file-in" accept="image/*">
@@ -338,10 +358,16 @@
         <option value="Map">Map</option>
         <option value="Poster">Poster</option>
         <option value="Canvas">Canvas</option>
+        <option value="Stretched Canvas">Stretched Canvas</option>
         <option value="Print">Print</option>
         <option value="Drawing">Drawing</option>
+        <option value="Portrait">Portrait</option>
         <option value="Other">Other</option>
       </select>
+    </div>
+    <div class="fld">
+      <label>Tags <span style="color:var(--dim);font-size:9px">(comma separated)</span></label>
+      <input type="text" id="lib-tags" placeholder="landscape, blue, large…">
     </div>
     <div class="toggle-row" style="margin-bottom:10px">
       <span class="toggle-label">Framed</span>

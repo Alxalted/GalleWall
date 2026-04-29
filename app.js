@@ -37,11 +37,11 @@ const FRAME_GROUPS = [
   {name:'SILVERHÖJDEN',sizes:[{n:'holds 8×10 print',w:9.75,h:11.75}]},
 ];
 const IKEA_LEDGES = [
-  {n:'MOSSLANDA 21.5"',w:21.5,h:3.5},{n:'MOSSLANDA 43"',w:43.3,h:3.5},
-  {n:'RIBBA Ledge 21.5"',w:21.5,h:3.5},{n:'RIBBA Ledge 43"',w:43.3,h:3.5},
-  {n:'EKET Shelf 13.75"',w:13.75,h:5.5},
-  {n:'LACK Wall Shelf 43"',w:43.3,h:10.2},
-  {n:'HEMNES Shelf 45"',w:45.5,h:8.25},
+  {n:'MOSSLANDA 21.5"',w:21.5,h:3.5,type:'ledge'},{n:'MOSSLANDA 43"',w:43.3,h:3.5,type:'ledge'},
+  {n:'RIBBA Ledge 21.5"',w:21.5,h:3.5,type:'ledge'},{n:'RIBBA Ledge 43"',w:43.3,h:3.5,type:'ledge'},
+  {n:'EKET Shelf 13.75"',w:13.75,h:5.5,type:'shelf'},
+  {n:'LACK Wall Shelf 43"',w:43.3,h:10.2,type:'shelf'},
+  {n:'HEMNES Shelf 45"',w:45.5,h:8.25,type:'shelf'},
 ];
 const FIXTURE_PRESETS = [
   {n:'Light Switch',w:3.5,h:4.5,icon:'⚡'},{n:'Duplex Outlet',w:3.5,h:4.5,icon:'⊡'},
@@ -57,7 +57,7 @@ const COLOR_PALETTE = [
   {name:'Beige',hex:'#c8b89a'},{name:'Natural',hex:'#b89a70'},
   {name:'Walnut',hex:'#5a3820'},{name:'Copper',hex:'#b87333'},
 ];
-const ART_TYPES = ['Photo','Map','Poster','Canvas','Print','Drawing','Portrait','Other'];
+const ART_TYPES = ['Photo','Map','Poster','Canvas','Stretched Canvas','Print','Drawing','Portrait','Other'];
 const FRAME_KEYWORDS = ['Framed','Frame'];
 const UNFRAMED_KEYWORDS = ['Canvas','Poster','Print','Unframed'];
 
@@ -527,7 +527,8 @@ function quickAddShelf(l){
     x:clamp((S.wall.w-l.w)/2,0,S.wall.w-l.w),
     y:S.wall.h*0.5,
     w:l.w,h:l.h,color:'#7a6548',
-    label:l.n,gid:null,zi:S.pieces.length+1,
+    label:l.n,shelfType:l.type||'shelf',
+    gid:null,zi:S.pieces.length+1,
     conflict:false,gw:false,owarn:false,ywarn:false
   };
   S.pieces.push(piece);mkShelfEl(piece);
@@ -557,18 +558,26 @@ function addCustomArtwork(withPhoto){
   if(withPhoto)openCamForPiece(piece.id);
 }
 
+function setCustomShelfType(t){
+  document.getElementById('shelf-type-val').value=t;
+  document.getElementById('shelf-type-btn-shelf').classList.toggle('on',t==='shelf');
+  document.getElementById('shelf-type-btn-ledge').classList.toggle('on',t==='ledge');
+}
 function addShelf(){
   const w=parseFloat(document.getElementById('shelf-l').value);
   const h=parseFloat(document.getElementById('shelf-h').value);
   if(!w||!h||isNaN(w)||isNaN(h)||w<=0||h<=0){showToast('Enter shelf dimensions.');return;}
+  const shelfType=document.getElementById('shelf-type-val')?.value||'shelf';
   pushUndo();
-  const lbl='Shelf '+(S.pieces.filter(p=>p.type==='shelf').length+1);
+  const n=S.pieces.filter(p=>p.type==='shelf').length+1;
+  const lbl=(shelfType==='ledge'?'Ledge ':'Shelf ')+n;
   const piece={
     id:S.nid++,type:'shelf',
     x:clamp((S.wall.w-w)/2,0,S.wall.w-w),
     y:S.wall.h*0.5,
     w,h,color:'#7a6548',
-    label:lbl,gid:null,zi:S.pieces.length+1,
+    label:lbl,shelfType,
+    gid:null,zi:S.pieces.length+1,
     conflict:false,gw:false,owarn:false,ywarn:false
   };
   S.pieces.push(piece);mkShelfEl(piece);
@@ -602,26 +611,32 @@ function mkArtEl(p){
   const lbl=document.createElement('div');lbl.className='pc-lbl';
   lbl.innerHTML=`<span class="pc-name" id="pn${p.id}">${esc(p.label)}</span><span class="pc-dims" id="pd${p.id}" style="${S.dims?'':'display:none'}">${p.w}" × ${p.h}"</span>`;
   el.appendChild(lbl);
+  const frame=document.createElement('div');frame.className='pc-frame';frame.id='pf'+p.id;el.appendChild(frame);
   el.addEventListener('pointerdown',e=>pieceDown(e,p.id));
-  el.addEventListener('dblclick',e=>{e.stopPropagation();switchTab('props');});
+  el.addEventListener('dblclick',e=>{e.stopPropagation();showPiecePanel();});
   document.getElementById('wall').appendChild(el);
 }
 
 function mkShelfEl(p){
+  const isLedge=p.shelfType==='ledge';
   const el=document.createElement('div');
-  el.id='p'+p.id;el.className='pc shelf-pc';el.dataset.id=p.id;
+  el.id='p'+p.id;
+  el.className='pc '+(isLedge?'ledge-pc':'shelf-pc');
+  el.dataset.id=p.id;
   Object.assign(el.style,{
     left:(p.x*S.scale)+'px',top:(p.y*S.scale)+'px',
     width:(p.w*S.scale)+'px',height:(p.h*S.scale)+'px',
-    backgroundColor:p.color,
-    backgroundImage:'repeating-linear-gradient(90deg,transparent,transparent 10px,rgba(0,0,0,.07) 10px,rgba(0,0,0,.07) 11px)',
+    backgroundColor:p.color||'#7a6548',
     zIndex:p.zi
   });
+  if(isLedge){
+    const lip=document.createElement('div');lip.className='ledge-lip';el.appendChild(lip);
+  }
   const lbl=document.createElement('div');lbl.className='shelf-lbl';lbl.id='pn'+p.id;
   lbl.textContent=p.label+(S.dims?` (${p.w}" × ${p.h}")`:'');
   el.appendChild(lbl);
   el.addEventListener('pointerdown',e=>pieceDown(e,p.id));
-  el.addEventListener('dblclick',e=>{e.stopPropagation();switchTab('props');});
+  el.addEventListener('dblclick',e=>{e.stopPropagation();showPiecePanel();});
   document.getElementById('wall').appendChild(el);
 }
 
@@ -675,7 +690,7 @@ function select(id,additive){
   }
   refreshSel();updatePropsPanel();updateStatus();
 }
-function deselectAll(){S.sel.clear();refreshSel();updatePropsPanel();updateStatus();}
+function deselectAll(){S.sel.clear();refreshSel();updatePropsPanel();updateStatus();showWallPanel();}
 function refreshSel(){
   document.querySelectorAll('.pc').forEach(el=>{
     const id=+el.dataset.id;
@@ -703,7 +718,7 @@ function pieceDown(e,id){
   if(!additive&&!S.sel.has(id)){
     S.sel.clear();S.sel.add(id);
     if(p?.gid&&S.groups[p.gid])S.groups[p.gid].forEach(i=>S.sel.add(i));
-    switchTab('props');
+    showPiecePanel();
   }else if(additive){S.sel.has(id)?S.sel.delete(id):S.sel.add(id);}
   refreshSel();updatePropsPanel();updateStatus();
   if(S.selMode)return;
@@ -770,10 +785,13 @@ function onDocMove(e){
     const p=getPiece(id);if(!p||p.type!=='art'||p.snapToShelf===false)return;
     let snapped=false;
     for(const s of shelves){
-      if(p.x+p.w<=s.x||p.x>=s.x+s.w)continue; // no horizontal overlap
-      const dist=(p.y+p.h)-s.y;
+      if(p.x+p.w<=s.x||p.x>=s.x+s.w)continue;
+      // Ledges: art bottom sits 1" above ledge bottom (front lip covers that 1")
+      // Shelves: art bottom sits on shelf top
+      const snapY=s.shelfType==='ledge'?s.y+s.h-1:s.y;
+      const dist=(p.y+p.h)-snapY;
       if(Math.abs(dist)<SNAP_IN){
-        p.y=s.y-p.h;
+        p.y=snapY-p.h;
         p.snappedToShelfId=s.id;
         const el=document.getElementById('p'+id);
         if(el)el.style.top=(p.y*S.scale)+'px';
@@ -834,10 +852,17 @@ function renderPiece(p){
     el.style.zIndex=S.sel.has(p.id)?500:(p.zi||3);
   }else if(p.type==='art'){
     el.style.backgroundColor=p.color;
-    if(p.frameVisible){
-      const thickPx=Math.max(1,Math.round((p.frameThickness||1)*S.scale));
-      el.style.boxShadow=`inset 0 0 0 ${thickPx}px ${p.frameColor||p.color||'#2a2a2a'}`;
-    }else{el.style.boxShadow='';}
+    const isCanvas=p.artType==='Stretched Canvas';
+    el.classList.toggle('canvas-art',isCanvas&&!p.frameVisible);
+    const frameEl=document.getElementById('pf'+p.id);
+    if(frameEl){
+      if(p.frameVisible){
+        const thickPx=Math.max(1,Math.round((p.frameThickness||1)*S.scale));
+        frameEl.style.boxShadow=`inset 0 0 0 ${thickPx}px ${p.frameColor||p.color||'#2a2a2a'}`;
+      }else if(isCanvas){
+        frameEl.style.boxShadow=''; // handled by CSS .canvas-art .pc-frame
+      }else{frameEl.style.boxShadow='';}
+    }
     const warn=p.owarn?' owarn':p.ywarn?' ywarn':'';
     el.className='pc'+(p.shape==='oval'?' oval':'')+(S.sel.has(p.id)?' sel':'')+(p.conflict?' conflict':'')+(p.gw&&S.gaps?' gw':'')+(p.gid?' grp':'')+warn;
     const img=document.getElementById('pi'+p.id);
@@ -848,7 +873,9 @@ function renderPiece(p){
     const pn=document.getElementById('pn'+p.id);if(pn)pn.textContent=p.label;
     const pd=document.getElementById('pd'+p.id);if(pd){pd.textContent=`${p.w}" × ${p.h}"`;pd.style.display=S.dims?'':'none';}
   }else{
-    el.className='pc shelf-pc'+(S.sel.has(p.id)?' sel':'')+(p.conflict?' conflict':'')+(p.gw&&S.gaps?' gw':'');
+    const isLedge=p.shelfType==='ledge';
+    el.className='pc '+(isLedge?'ledge-pc':'shelf-pc')+(S.sel.has(p.id)?' sel':'')+(p.conflict?' conflict':'')+(p.gw&&S.gaps?' gw':'');
+    el.style.backgroundColor=p.color||'#7a6548';
     const lbl=document.getElementById('pn'+p.id);
     if(lbl)lbl.textContent=p.label+(S.dims?` (${p.w}" × ${p.h}")`:'');
   }
@@ -960,6 +987,17 @@ function updatePropsPanel(){
   zonePnl.classList.add('hide');
   artPnl?.classList.add('hide');
   shelfPnl?.classList.add('hide');
+  // Update piece header
+  const lbl=document.getElementById('pp-piece-label');
+  const dims=document.getElementById('pp-piece-dims');
+  if(S.sel.size===1){
+    const pp=getPiece([...S.sel][0]);
+    if(lbl)lbl.textContent=pp?.label||'';
+    if(dims)dims.textContent=pp?`${pp.w}" × ${pp.h}"`:'';
+  }else{
+    if(lbl)lbl.textContent=S.sel.size>1?`${S.sel.size} selected`:'';
+    if(dims)dims.textContent='';
+  }
   if(S.sel.size!==1)return;
   const p=getPiece([...S.sel][0]);if(!p)return;
   if(p.type==='zone'){
@@ -997,6 +1035,17 @@ function updatePropsPanel(){
     if(sn)sn.checked=p.snapToShelf!==false;
   }else if(p.type==='shelf'&&shelfPnl){
     shelfPnl.classList.remove('hide');
+    const sc=document.getElementById('p-shelf-color-swatches');
+    if(sc){
+      sc.innerHTML='';
+      COLOR_PALETTE.forEach(c=>{
+        const sw=document.createElement('div');
+        sw.className='csw'+(p.color===c.hex?' on':'');
+        sw.style.background=c.hex;sw.title=c.name;
+        sw.addEventListener('click',()=>setShelfColor(c.hex));
+        sc.appendChild(sw);
+      });
+    }
     populateShelfLinkList(p);
   }
 }
@@ -1038,6 +1087,11 @@ function populateShelfLinkList(shelf){
     row.querySelector('button').addEventListener('click',()=>toggleShelfLink(shelf.id,s.id));
     container.appendChild(row);
   });
+}
+function setShelfColor(hex){
+  if(S.sel.size!==1)return;
+  const p=getPiece([...S.sel][0]);if(!p||p.type!=='shelf')return;
+  pushUndo();p.color=hex;renderPiece(p);updatePropsPanel();
 }
 function toggleShelfLink(idA,idB){
   const a=getPiece(idA);const b=getPiece(idB);if(!a||!b)return;
@@ -1270,6 +1324,7 @@ function openSingleAddModal(file){
   document.getElementById('lib-landscape').classList.remove('on');
   document.getElementById('m-lib-add').dataset.editId='';
   document.getElementById('lib-modal-title').textContent='Add to Library';
+  const tagsEl=document.getElementById('lib-tags');if(tagsEl)tagsEl.value='';
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',parsed.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',parsed.frameColor?.hex||null);
@@ -1361,13 +1416,15 @@ async function confirmAddToLibrary(){
     if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save';}
   }
 
+  const tagsRaw=document.getElementById('lib-tags')?.value||'';
+  const tags=tagsRaw.split(',').map(t=>t.trim()).filter(Boolean);
   const editId=+document.getElementById('m-lib-add').dataset.editId||0;
   if(editId){
     const item=S.library.find(i=>i.id===editId);
-    if(item){Object.assign(item,{name,w,h,type,framed,color,frameColor});if(libImgData)item.img=imgUrl;}
+    if(item){Object.assign(item,{name,w,h,type,framed,color,frameColor,tags});if(libImgData)item.img=imgUrl;}
     showToast('"'+name+'" updated.');
   }else{
-    S.library.push({id:Date.now(),name,w,h,img:imgUrl,type,framed,color,frameColor,placedId:null});
+    S.library.push({id:Date.now(),name,w,h,img:imgUrl,type,framed,color,frameColor,tags,placedId:null});
     showToast('"'+name+'" added to library.');
   }
   document.getElementById('m-lib-add').dataset.editId='';
@@ -1398,6 +1455,8 @@ function openEditLibItem(id){
   document.getElementById('lib-landscape').classList.toggle('on',item.w>item.h);
   document.getElementById('m-lib-add').dataset.editId=id;
   document.getElementById('lib-modal-title').textContent='Edit Artwork';
+  const tagsEl=document.getElementById('lib-tags');
+  if(tagsEl)tagsEl.value=(item.tags||[]).join(', ');
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',item.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',item.frameColor?.hex||null);
@@ -1424,6 +1483,7 @@ function persistLibrary(){
 }
 
 function renderLibrary(){
+  if(document.getElementById('drawer')?.classList.contains('open'))renderDrawerGrid();
   const el=document.getElementById('wall-lib-list');if(!el)return;
   if(!S.library.length){
     el.innerHTML='<div style="font-size:11px;color:var(--muted);text-align:center;padding:12px 0">Library is empty.<br>Go to Library to add artwork.</div>';
@@ -1711,11 +1771,15 @@ async function exportPNG(){
 // ══════════════════════════════════════════
 function closeModal(id){document.getElementById(id).classList.add('hide');}
 
-function switchTab(name){
-  ['add','props','wall'].forEach(t=>{
-    document.getElementById('t-'+t).classList.toggle('on',t===name);
-    document.getElementById('tc-'+t).classList.toggle('on',t===name);
-  });
+function switchTab(){}  // legacy no-op — panels are now context-driven
+function showWallPanel(){
+  document.getElementById('panel-wall')?.classList.remove('hide');
+  document.getElementById('panel-piece')?.classList.add('hide');
+}
+function showPiecePanel(){
+  document.getElementById('panel-wall')?.classList.add('hide');
+  document.getElementById('panel-piece')?.classList.remove('hide');
+  updatePropsPanel();
 }
 function toggleAcc(id){
   const body=document.getElementById(id);
@@ -1770,6 +1834,359 @@ function showToast(msg){
 }
 
 function esc(s){return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+
+// ══════════════════════════════════════════
+// ADD DRAWER
+// ══════════════════════════════════════════
+let drawerTab='art';
+let drawerFilters={size:null,style:null}; // null = all
+let drawerSel=new Set(); // selected item keys in drawer
+
+function openDrawer(){
+  document.getElementById('drawer').classList.add('open');
+  document.getElementById('drawer-backdrop').classList.add('show');
+  renderDrawerFilters();
+  renderDrawerGrid();
+}
+function closeDrawer(){
+  document.getElementById('drawer').classList.remove('open');
+  document.getElementById('drawer-backdrop').classList.remove('show');
+  drawerSel.clear();
+  updateDrawerFooter();
+}
+function switchDrawerTab(tab){
+  drawerTab=tab;
+  drawerFilters={size:null,style:null};
+  drawerSel.clear();
+  document.querySelectorAll('.dtab').forEach(b=>b.classList.toggle('on',b.dataset.tab===tab));
+  renderDrawerFilters();
+  renderDrawerGrid();
+  updateDrawerFooter();
+}
+
+function renderDrawerFilters(){
+  const bar=document.getElementById('drawer-filters');if(!bar)return;
+  bar.innerHTML='';
+  if(drawerTab==='art'){
+    [['size',null,'All Sizes'],['size','s','Small'],['size','m','Medium'],['size','l','Large']].forEach(([key,val,lbl])=>{
+      const b=document.createElement('button');b.className='dfbtn'+(drawerFilters[key]===val?' on':'');
+      b.textContent=lbl;b.onclick=()=>{drawerFilters[key]=val;renderDrawerFilters();renderDrawerGrid();};
+      bar.appendChild(b);
+    });
+    const div=document.createElement('div');div.style.cssText='width:1px;height:18px;background:var(--border2);flex-shrink:0;margin:0 2px';bar.appendChild(div);
+    [['style',null,'All'],['style','framed','Framed'],['style','unframed','Unframed'],['style','canvas','Canvas']].forEach(([key,val,lbl])=>{
+      const b=document.createElement('button');b.className='dfbtn'+(drawerFilters[key]===val?' on':'');
+      b.textContent=lbl;b.onclick=()=>{drawerFilters[key]=val;renderDrawerFilters();renderDrawerGrid();};
+      bar.appendChild(b);
+    });
+  }
+}
+
+function drawerSizeGroup(item){
+  const long=Math.max(item.w,item.h);
+  if(long<=16)return's';
+  if(long<=24)return'm';
+  return'l';
+}
+
+function renderDrawerGrid(){
+  const grid=document.getElementById('drawer-grid');if(!grid)return;
+  grid.innerHTML='';
+  const REF=36,MAX_PX=160,MIN_PX=52;
+  const factor=MAX_PX/REF;
+
+  function cardSize(w,h){
+    let dw=w*factor,dh=h*factor;
+    const minDim=Math.min(dw,dh);
+    if(minDim<MIN_PX){const s=MIN_PX/minDim;dw*=s;dh*=s;}
+    return{dw:Math.round(dw),dh:Math.round(dh)};
+  }
+
+  if(drawerTab==='art'){
+    let items=S.library;
+    if(drawerFilters.size)items=items.filter(i=>drawerSizeGroup(i)===drawerFilters.size);
+    if(drawerFilters.style==='framed')items=items.filter(i=>i.framed);
+    else if(drawerFilters.style==='unframed')items=items.filter(i=>!i.framed&&i.type!=='Stretched Canvas');
+    else if(drawerFilters.style==='canvas')items=items.filter(i=>i.type==='Stretched Canvas');
+    if(!items.length){
+      grid.innerHTML='<div style="width:100%;text-align:center;padding:30px;color:var(--muted);font-size:11px">No artwork matches.<br>Add pieces in the Library.</div>';
+      return;
+    }
+    items.forEach(item=>{
+      const key='lib:'+item.id;
+      const onWall=item.placedId&&S.pieces.find(p=>p.id===item.placedId);
+      const {dw,dh}=cardSize(item.w,item.h);
+      const card=document.createElement('div');
+      card.className='dcard'+(drawerSel.has(key)?' dsel':'')+(onWall?' lifting':'');
+      card.style.width=dw+'px';card.style.height=dh+'px';
+      if(item.img){
+        const img=document.createElement('img');img.className='dcard-thumb';
+        img.src=item.img;img.style.cssText='width:100%;height:100%;object-fit:cover;flex:1';
+        card.appendChild(img);
+      }else{
+        const blank=document.createElement('div');blank.className='dcard-blank';blank.textContent='🖼';
+        blank.style.flex='1';card.appendChild(blank);
+      }
+      const info=document.createElement('div');info.className='dcard-info';
+      info.innerHTML=`<div class="dcard-name">${esc(item.name)}</div><div class="dcard-dims">${item.w}"×${item.h}"</div>`;
+      if(item.tags&&item.tags.length){
+        const tags=document.createElement('div');tags.className='dcard-tags';
+        item.tags.slice(0,3).forEach(t=>{const s=document.createElement('span');s.className='dcard-tag';s.textContent=t;tags.appendChild(s);});
+        info.appendChild(tags);
+      }
+      card.appendChild(info);
+      if(onWall){card.title='Already on wall';card.style.opacity='.5';}
+      else setupCardInteraction(card,key,{type:'lib',item});
+      grid.appendChild(card);
+    });
+
+    // Custom art button
+    const custom=document.createElement('div');
+    custom.className='dcard';custom.style.cssText='width:80px;height:80px;align-items:center;justify-content:center;border-style:dashed;cursor:pointer';
+    custom.innerHTML='<div style="text-align:center;color:var(--muted);font-size:10px;padding:8px">+ Custom</div>';
+    custom.onclick=()=>{closeDrawer();document.getElementById('m-custom-piece').classList.remove('hide');};
+    grid.appendChild(custom);
+
+  }else if(drawerTab==='frames'){
+    FRAME_GROUPS.forEach(g=>{
+      g.sizes.forEach(s=>{
+        const key='frame:'+g.name+':'+s.w+':'+s.h;
+        const {dw,dh}=cardSize(s.w,s.h);
+        const card=document.createElement('div');
+        card.className='dcard'+(drawerSel.has(key)?' dsel':'');
+        card.style.width=dw+'px';card.style.height=dh+'px';
+        const blank=document.createElement('div');blank.style.cssText='flex:1;display:flex;align-items:center;justify-content:center';
+        blank.innerHTML='<div style="font-size:9px;color:var(--dim);text-align:center;padding:4px">'+esc(g.name)+'</div>';
+        card.appendChild(blank);
+        const info=document.createElement('div');info.className='dcard-info';
+        info.innerHTML=`<div class="dcard-name">${esc(g.name)}</div><div class="dcard-dims">${s.w}"×${s.h}"</div>`;
+        card.appendChild(info);
+        setupCardInteraction(card,key,{type:'frame',frame:{name:g.name,w:s.w,h:s.h}});
+        grid.appendChild(card);
+      });
+    });
+    const custom=document.createElement('div');
+    custom.className='dcard';custom.style.cssText='width:80px;height:80px;align-items:center;justify-content:center;border-style:dashed;cursor:pointer';
+    custom.innerHTML='<div style="text-align:center;color:var(--muted);font-size:10px;padding:8px">+ Custom</div>';
+    custom.onclick=()=>{closeDrawer();document.getElementById('m-custom-piece').classList.remove('hide');};
+    grid.appendChild(custom);
+
+  }else if(drawerTab==='shelves'){
+    IKEA_LEDGES.forEach(l=>{
+      const key='shelf:'+l.n;
+      const card=document.createElement('div');
+      card.className='dcard shelf-dcard'+(drawerSel.has(key)?' dsel':'');
+      const bar=document.createElement('div');bar.className='shelf-dcard-bar';
+      bar.style.width=Math.max(20,Math.min(80,Math.round(l.w*1.5)))+'px';
+      bar.style.background=l.type==='ledge'?'#8a7050':'#7a6548';
+      const info=document.createElement('div');info.className='dcard-info';
+      info.style.background='none';info.style.padding='0';
+      info.innerHTML=`<div class="dcard-name">${esc(l.n)}</div><div class="dcard-dims">${l.w}"×${l.h}" · ${l.type||'shelf'}</div>`;
+      card.appendChild(bar);card.appendChild(info);
+      setupCardInteraction(card,key,{type:'shelf',shelf:l});
+      grid.appendChild(card);
+    });
+    const custom=document.createElement('div');
+    custom.className='dcard shelf-dcard';custom.style.cssText='border-style:dashed;cursor:pointer';
+    custom.innerHTML='<div style="color:var(--muted);font-size:10px;padding:4px 8px">+ Custom Shelf / Ledge</div>';
+    custom.onclick=()=>{closeDrawer();document.getElementById('m-custom-shelf').classList.remove('hide');};
+    grid.appendChild(custom);
+  }
+  updateDrawerFooter();
+}
+
+function updateDrawerFooter(){
+  const count=drawerSel.size;
+  const countEl=document.getElementById('drawer-count');
+  const addBtn=document.getElementById('drawer-add-btn');
+  if(countEl)countEl.textContent=count===0?'Select pieces to add':`${count} selected`;
+  if(addBtn){
+    addBtn.textContent=count===0?'Add to Wall':count===1?'Add to Wall':`Add ${count} to Wall`;
+    addBtn.disabled=count===0;
+  }
+}
+
+// ── Card interaction: tap to select, longpress to drag ──
+let _lpTimer=null,_lpStart={x:0,y:0},_lpData=null,_lpCard=null;
+
+function setupCardInteraction(card,key,data){
+  card.addEventListener('pointerdown',e=>{
+    if(e.button!==0&&e.button!==undefined)return;
+    _lpStart={x:e.clientX,y:e.clientY};_lpData=data;_lpCard=card;
+    _lpTimer=setTimeout(()=>{
+      _lpTimer=null;
+      if(navigator.vibrate)navigator.vibrate(30);
+      startDrawerDrag(e,key,data,card);
+    },420);
+  });
+  card.addEventListener('pointermove',e=>{
+    if(!_lpTimer)return;
+    if(Math.abs(e.clientX-_lpStart.x)>8||Math.abs(e.clientY-_lpStart.y)>8){
+      clearTimeout(_lpTimer);_lpTimer=null;
+    }
+  });
+  card.addEventListener('pointerup',e=>{
+    if(_lpTimer){
+      clearTimeout(_lpTimer);_lpTimer=null;
+      // Tap → toggle selection
+      if(drawerSel.has(key))drawerSel.delete(key);
+      else drawerSel.add(key);
+      card.classList.toggle('dsel',drawerSel.has(key));
+      updateDrawerFooter();
+    }
+  });
+  card.addEventListener('pointercancel',()=>{clearTimeout(_lpTimer);_lpTimer=null;});
+}
+
+// ── Drag ghost ──
+let _drag={active:false,ghost:null,data:null,key:null};
+
+function startDrawerDrag(e,key,data,card){
+  card.classList.add('lifting');
+  const ghost=document.getElementById('drag-ghost');
+  ghost.textContent=data.type==='lib'?data.item.name:data.type==='frame'?data.frame.name:data.shelf.n;
+  ghost.style.display='flex';
+  ghost.style.left=e.clientX+'px';ghost.style.top=e.clientY+'px';
+  _drag={active:true,ghost,data,key,card};
+  document.addEventListener('pointermove',onDragGhostMove,{passive:false});
+  document.addEventListener('pointerup',onDragGhostUp);
+}
+
+function onDragGhostMove(e){
+  if(!_drag.active)return;
+  e.preventDefault();
+  _drag.ghost.style.left=e.clientX+'px';
+  _drag.ghost.style.top=e.clientY+'px';
+}
+
+function onDragGhostUp(e){
+  if(!_drag.active)return;
+  document.removeEventListener('pointermove',onDragGhostMove);
+  document.removeEventListener('pointerup',onDragGhostUp);
+  _drag.ghost.style.display='none';
+  _drag.card?.classList.remove('lifting');
+  // Check if dropped over the wall
+  const wallEl=document.getElementById('wall');
+  if(wallEl){
+    const r=wallEl.getBoundingClientRect();
+    if(e.clientX>=r.left&&e.clientX<=r.right&&e.clientY>=r.top&&e.clientY<=r.bottom){
+      const wx=(e.clientX-r.left)/S.scale;
+      const wy=(e.clientY-r.top)/S.scale;
+      addPieceFromDrawerAtPos(_drag.data,wx,wy);
+      closeDrawer();
+    }
+  }
+  _drag={active:false,ghost:null,data:null,key:null,card:null};
+}
+
+function addPieceFromDrawerAtPos(data,wx,wy){
+  pushUndo();
+  if(data.type==='lib'){
+    const item=data.item;
+    if(item.placedId&&S.pieces.find(p=>p.id===item.placedId)){showToast('"'+item.name+'" already on wall.');return;}
+    const piece={
+      id:S.nid++,type:'art',
+      x:clamp(wx-item.w/2,0,S.wall.w-item.w),y:clamp(wy-item.h/2,0,S.wall.h-item.h),
+      w:item.w,h:item.h,shape:'rect',color:'#2a2a2a',
+      img:item.img||null,imgOX:0,imgOY:0,imgZ:1,
+      label:item.name,gid:null,zi:S.pieces.length+1,
+      libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
+      snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
+      frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
+    };
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkArtEl(piece);
+    checkConflicts();renderConflicts();updateStatus();
+    select(piece.id,false);renderLibrary();
+  }else if(data.type==='frame'){
+    const f=data.frame;
+    const piece={
+      id:S.nid++,type:'art',
+      x:clamp(wx-f.w/2,0,S.wall.w-f.w),y:clamp(wy-f.h/2,0,S.wall.h-f.h),
+      w:f.w,h:f.h,shape:'rect',color:'#2a2a2a',
+      img:null,imgOX:0,imgOY:0,imgZ:1,
+      label:f.name,gid:null,zi:S.pieces.length+1,
+      conflict:false,gw:false,owarn:false,ywarn:false,
+      snapToShelf:true,snappedToShelfId:null,artType:null,
+      frameVisible:false,frameColor:null,frameThickness:1,
+    };
+    S.pieces.push(piece);mkArtEl(piece);
+    checkConflicts();renderConflicts();updateStatus();
+    select(piece.id,false);
+  }else if(data.type==='shelf'){
+    const l=data.shelf;
+    const piece={
+      id:S.nid++,type:'shelf',
+      x:clamp(wx-l.w/2,0,S.wall.w-l.w),y:clamp(wy-l.h/2,0,S.wall.h-l.h),
+      w:l.w,h:l.h,color:'#7a6548',
+      label:l.n,shelfType:l.type||'shelf',
+      gid:null,zi:S.pieces.length+1,
+      conflict:false,gw:false,owarn:false,ywarn:false
+    };
+    S.pieces.push(piece);mkShelfEl(piece);
+    checkConflicts();renderConflicts();updateStatus();
+    select(piece.id,false);
+  }
+}
+
+function addSelectedFromDrawer(){
+  if(!drawerSel.size)return;
+  pushUndo();
+  const newIds=[];
+  drawerSel.forEach(key=>{
+    const parts=key.split(':');
+    if(parts[0]==='lib'){
+      const item=S.library.find(i=>String(i.id)===parts[1]);
+      if(!item||item.placedId&&S.pieces.find(p=>p.id===item.placedId))return;
+      const pos=findEmptySpot(item.w,item.h);
+      const piece={
+        id:S.nid++,type:'art',x:pos.x,y:pos.y,
+        w:item.w,h:item.h,shape:'rect',color:'#2a2a2a',
+        img:item.img||null,imgOX:0,imgOY:0,imgZ:1,
+        label:item.name,gid:null,zi:S.pieces.length+1,
+        libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
+        snapToShelf:true,snappedToShelfId:null,artType:item.type||null,
+        frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
+      };
+      item.placedId=piece.id;S.pieces.push(piece);mkArtEl(piece);newIds.push(piece.id);
+    }else if(parts[0]==='frame'){
+      const [,name,,w,,h]=key.split(':');
+      const fw=parseFloat(w),fh=parseFloat(h);
+      const pos=findEmptySpot(fw,fh);
+      const piece={
+        id:S.nid++,type:'art',x:pos.x,y:pos.y,
+        w:fw,h:fh,shape:'rect',color:'#2a2a2a',
+        img:null,imgOX:0,imgOY:0,imgZ:1,
+        label:name,gid:null,zi:S.pieces.length+1,
+        conflict:false,gw:false,owarn:false,ywarn:false,
+        snapToShelf:true,snappedToShelfId:null,artType:null,
+        frameVisible:false,frameColor:null,frameThickness:1,
+      };
+      S.pieces.push(piece);mkArtEl(piece);newIds.push(piece.id);
+    }else if(parts[0]==='shelf'){
+      const l=IKEA_LEDGES.find(x=>x.n===parts.slice(1).join(':'));
+      if(!l)return;
+      const pos=findEmptySpot(l.w,l.h);
+      const piece={
+        id:S.nid++,type:'shelf',x:pos.x,y:pos.y,
+        w:l.w,h:l.h,color:'#7a6548',
+        label:l.n,shelfType:l.type||'shelf',
+        gid:null,zi:S.pieces.length+1,
+        conflict:false,gw:false,owarn:false,ywarn:false
+      };
+      S.pieces.push(piece);mkShelfEl(piece);newIds.push(piece.id);
+    }
+  });
+  persistLibrary();
+  checkConflicts();renderConflicts();updateStatus();
+  // Select all newly added pieces
+  S.sel.clear();
+  newIds.forEach(id=>S.sel.add(id));
+  refreshSel();updatePropsPanel();updateStatus();
+  if(newIds.length)showPiecePanel();
+  renderLibrary();
+  closeDrawer();
+}
 
 // ══════════════════════════════════════════
 // START
