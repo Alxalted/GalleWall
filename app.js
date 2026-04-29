@@ -1110,11 +1110,21 @@ function renderLibraryPage(){
   if(!items.length){grid.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';grid.innerHTML='';
   items.forEach(item=>{
+    const cat=item.itemCategory||'art';
     const onWall=item.placedId&&S.pieces.find(p=>p.id===item.placedId);
     const card=document.createElement('div');card.className='lib-card';
-    const thumb=item.img?`<img src="${item.img}" alt="">`:`<div class="lib-card-thumb-blank">🖼</div>`;
-    const typeBadge=item.type?`<span class="meta-badge badge-type">${esc(item.type)}</span>`:'';
-    const framedBadge=item.framed!=null?`<span class="meta-badge ${item.framed?'badge-framed':'badge-unframed'}">${item.framed?'Framed':'Unframed'}</span>`:'';
+    let thumb;
+    if(cat==='shelf'){
+      const bg=item.color?.hex||(item.shelfType==='ledge'?'#8a7050':'#7a6548');
+      thumb=`<div class="lib-card-thumb-blank" style="background:${bg};color:#fff;font-size:10px;text-transform:capitalize">${esc(item.shelfType||'shelf')}</div>`;
+    }else if(cat==='decor'){
+      thumb=item.img?`<img src="${item.img}" alt="">`:`<div class="lib-card-thumb-blank" style="font-size:24px">${esc(item.icon||'◈')}</div>`;
+    }else{
+      thumb=item.img?`<img src="${item.img}" alt="">`:`<div class="lib-card-thumb-blank">🖼</div>`;
+    }
+    const catBadge=cat!=='art'?`<span class="meta-badge badge-type">${cat==='shelf'?(item.shelfType||'shelf'):cat}</span>`:'';
+    const typeBadge=cat==='art'&&item.type?`<span class="meta-badge badge-type">${esc(item.type)}</span>`:'';
+    const framedBadge=cat==='art'&&item.framed!=null?`<span class="meta-badge ${item.framed?'badge-framed':'badge-unframed'}">${item.framed?'Framed':'Unframed'}</span>`:'';
     const colorBadge=item.frameColor
       ?`<span class="meta-badge badge-color"><span class="color-dot" style="background:${item.frameColor.hex}"></span>${esc(item.frameColor.name)}</span>`
       :item.color?`<span class="meta-badge badge-color"><span class="color-dot" style="background:${item.color.hex}"></span>${esc(item.color.name)}</span>`:'';
@@ -1124,7 +1134,7 @@ function renderLibraryPage(){
       <div class="lib-card-body">
         <div class="lib-card-name">${esc(item.name)}</div>
         <div class="lib-card-dims">${item.w}" × ${item.h}"</div>
-        <div class="lib-card-meta">${typeBadge}${framedBadge}${colorBadge}</div>
+        <div class="lib-card-meta">${catBadge}${typeBadge}${framedBadge}${colorBadge}</div>
         ${statusBadge}
       </div>
       <div class="lib-card-footer">
@@ -1295,8 +1305,9 @@ function openSingleAddModal(file){
   document.getElementById('lib-portrait').classList.add('on');
   document.getElementById('lib-landscape').classList.remove('on');
   document.getElementById('m-lib-add').dataset.editId='';
-  document.getElementById('lib-modal-title').textContent='Add to Library';
   const tagsEl=document.getElementById('lib-tags');if(tagsEl)tagsEl.value='';
+  const catEl=document.getElementById('lib-category');if(catEl)catEl.value='art';
+  syncLibCategoryUI();
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',parsed.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',parsed.frameColor?.hex||null);
@@ -1327,6 +1338,37 @@ function buildModalSwatches(containerId,selectedHex){
 
 function syncFramedUI(){
   document.getElementById('lib-frame-color-row').style.display=document.getElementById('lib-framed').checked?'block':'none';
+}
+function syncLibCategoryUI(){
+  const cat=document.getElementById('lib-category')?.value||'art';
+  const isArt=cat==='art',isShelf=cat==='shelf',isDecor=cat==='decor';
+  // Image upload: art & decor yes; shelf no
+  const noPhoto=document.getElementById('lib-no-photo');
+  if(noPhoto)noPhoto.style.display=isShelf?'none':(libImgData?'none':'flex');
+  // Art-only rows
+  document.getElementById('lib-type')?.closest('.fld')?.style.setProperty('display',isArt?'':'none');
+  document.getElementById('lib-framed-row').style.display=isArt?'':'none';
+  if(!isArt)document.getElementById('lib-frame-color-row').style.display='none';
+  document.getElementById('lib-preset-row').style.display=isArt?'':'none';
+  document.getElementById('lib-orientation-row').style.display=isArt?'flex':'none';
+  document.getElementById('lib-dim-hint').style.display=isArt?'':'none';
+  // Category-specific
+  document.getElementById('lib-shelf-type-row').style.display=isShelf?'':'none';
+  document.getElementById('lib-icon-row').style.display=isDecor?'':'none';
+  const titleMap={art:'Add to Library',shelf:'Add Shelf / Ledge',decor:'Add Decor / Object'};
+  document.getElementById('lib-modal-title').textContent=titleMap[cat]||'Add to Library';
+}
+function setLibShelfType(type){
+  document.getElementById('lib-stype-ledge').classList.toggle('on',type==='ledge');
+  document.getElementById('lib-stype-shelf').classList.toggle('on',type==='shelf');
+}
+function getLibShelfType(){
+  return document.getElementById('lib-stype-ledge').classList.contains('on')?'ledge':'shelf';
+}
+function openLibModalFor(cat){
+  openSingleAddModal(null);
+  const catEl=document.getElementById('lib-category');
+  if(catEl){catEl.value=cat;syncLibCategoryUI();}
 }
 function getSelectedSwatch(containerId){
   const on=document.getElementById(containerId)?.querySelector('.csw.on');
@@ -1372,31 +1414,48 @@ async function confirmAddToLibrary(){
   const name=document.getElementById('lib-name').value.trim()||'Untitled';
   const w=parseFloat(document.getElementById('lib-w').value);
   const h=parseFloat(document.getElementById('lib-h').value);
-  if(!w||!h||w<=0||h<=0){showToast('Enter frame dimensions.');return;}
-  const type=document.getElementById('lib-type').value;
-  const framed=document.getElementById('lib-framed').checked;
+  if(!w||!h||w<=0||h<=0){showToast('Enter dimensions.');return;}
+  const itemCategory=document.getElementById('lib-category')?.value||'art';
   const color=getSelectedSwatch('lib-color-swatches');
-  const frameColor=getSelectedSwatch('lib-frame-swatches');
-
-  // Upload image if it's a base64 string and Firebase is ready
-  let imgUrl=libImgData;
-  if(imgUrl&&imgUrl.startsWith('data:')&&S.cloudReady){
-    const saveBtn=document.getElementById('btn-lib-save');
-    if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Uploading…';}
-    showToast('Uploading image…');
-    imgUrl=await uploadImageToStorage(imgUrl);
-    if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save';}
-  }
-
   const tagsRaw=document.getElementById('lib-tags')?.value||'';
   const tags=tagsRaw.split(',').map(t=>t.trim()).filter(Boolean);
   const editId=+document.getElementById('m-lib-add').dataset.editId||0;
+
+  const itemData={name,w,h,itemCategory,color,tags};
+
+  if(itemCategory==='art'){
+    itemData.type=document.getElementById('lib-type').value;
+    itemData.framed=document.getElementById('lib-framed').checked;
+    itemData.frameColor=getSelectedSwatch('lib-frame-swatches');
+    let imgUrl=libImgData;
+    if(imgUrl&&imgUrl.startsWith('data:')&&S.cloudReady){
+      const saveBtn=document.getElementById('btn-lib-save');
+      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Uploading…';}
+      showToast('Uploading image…');
+      imgUrl=await uploadImageToStorage(imgUrl);
+      if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save';}
+    }
+    itemData.img=imgUrl||null;
+  }else if(itemCategory==='shelf'){
+    itemData.shelfType=getLibShelfType();
+  }else if(itemCategory==='decor'){
+    itemData.icon=document.getElementById('lib-icon')?.value||'◈';
+    let imgUrl=libImgData;
+    if(imgUrl&&imgUrl.startsWith('data:')&&S.cloudReady){
+      const saveBtn=document.getElementById('btn-lib-save');
+      if(saveBtn){saveBtn.disabled=true;saveBtn.textContent='Uploading…';}
+      imgUrl=await uploadImageToStorage(imgUrl);
+      if(saveBtn){saveBtn.disabled=false;saveBtn.textContent='Save';}
+    }
+    itemData.img=imgUrl||null;
+  }
+
   if(editId){
     const item=S.library.find(i=>i.id===editId);
-    if(item){Object.assign(item,{name,w,h,type,framed,color,frameColor,tags});if(libImgData)item.img=imgUrl;}
+    if(item)Object.assign(item,itemData);
     showToast('"'+name+'" updated.');
   }else{
-    S.library.push({id:Date.now(),name,w,h,img:imgUrl,type,framed,color,frameColor,tags,placedId:null});
+    S.library.push({id:Date.now(),placedId:null,...itemData});
     showToast('"'+name+'" added to library.');
   }
   document.getElementById('m-lib-add').dataset.editId='';
@@ -1426,9 +1485,14 @@ function openEditLibItem(id){
   document.getElementById('lib-portrait').classList.toggle('on',!item.w||!item.h||item.h>=item.w);
   document.getElementById('lib-landscape').classList.toggle('on',item.w>item.h);
   document.getElementById('m-lib-add').dataset.editId=id;
-  document.getElementById('lib-modal-title').textContent='Edit Artwork';
   const tagsEl=document.getElementById('lib-tags');
   if(tagsEl)tagsEl.value=(item.tags||[]).join(', ');
+  const catEl=document.getElementById('lib-category');
+  if(catEl)catEl.value=item.itemCategory||'art';
+  const iconEl=document.getElementById('lib-icon');
+  if(iconEl)iconEl.value=item.icon||'';
+  if((item.itemCategory||'art')==='shelf')setLibShelfType(item.shelfType||'ledge');
+  syncLibCategoryUI();
   syncFramedUI();
   buildModalSwatches('lib-color-swatches',item.color?.hex||null);
   buildModalSwatches('lib-frame-swatches',item.frameColor?.hex||null);
@@ -1478,17 +1542,31 @@ function addFromLibrary(item){
   if(item.placedId&&S.pieces.find(p=>p.id===item.placedId)){showToast('"'+item.name+'" is already on the wall.');return;}
   pushUndo();
   const pos=findEmptySpot(item.w,item.h);
-  const piece={
-    id:S.nid++,type:'art',x:pos.x,y:pos.y,
-    w:item.w,h:item.h,shape:'rect',color:'#2a2a2a',
-    img:item.img||null,imgOX:0,imgOY:0,imgZ:1,
-    label:item.name,gid:null,zi:S.pieces.length+1,
-    libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
-    snapToShelf:true,snappedToShelfId:null,
-    frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1,
-  };
-  item.placedId=piece.id;persistLibrary();
-  S.pieces.push(piece);mkArtEl(piece);
+  const cat=item.itemCategory||'art';
+  let piece;
+  if(cat==='shelf'){
+    piece={id:S.nid++,type:'shelf',x:pos.x,y:pos.y,w:item.w,h:item.h,
+      color:item.color?.hex||'#7a6548',label:item.name,shelfType:item.shelfType||'shelf',
+      gid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id};
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkShelfEl(piece);
+  }else if(cat==='decor'){
+    piece={id:S.nid++,type:'fixture',x:pos.x,y:pos.y,w:item.w,h:item.h,
+      label:item.name,icon:item.icon||'◈',color:item.color?.hex||'#888',
+      gid:null,zi:S.pieces.length+1,conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id};
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkFixtureEl(piece);
+  }else{
+    piece={id:S.nid++,type:'art',x:pos.x,y:pos.y,
+      w:item.w,h:item.h,shape:'rect',color:'#2a2a2a',
+      img:item.img||null,imgOX:0,imgOY:0,imgZ:1,
+      label:item.name,gid:null,zi:S.pieces.length+1,
+      libId:item.id,conflict:false,gw:false,owarn:false,ywarn:false,
+      snapToShelf:true,snappedToShelfId:null,
+      frameVisible:!!(item.framed),frameColor:item.frameColor?.hex||null,frameThickness:1};
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkArtEl(piece);
+  }
   checkConflicts();renderConflicts();updateStatus();
   select(piece.id,false);renderLibrary();
 }
@@ -1944,24 +2022,73 @@ function renderDrawerGrid(){
     grid.appendChild(custom);
 
   }else if(drawerTab==='shelves'){
-    IKEA_LEDGES.forEach(l=>{
-      const key='shelf:'+l.n;
+    function shelfCard(key,label,dims,shelfType,colorHex,data){
       const card=document.createElement('div');
       card.className='dcard shelf-dcard'+(drawerSel.has(key)?' dsel':'');
       const bar=document.createElement('div');bar.className='shelf-dcard-bar';
-      bar.style.width=Math.max(20,Math.min(80,Math.round(l.w*1.5)))+'px';
-      bar.style.background=l.type==='ledge'?'#8a7050':'#7a6548';
+      bar.style.width=Math.max(20,Math.min(80,Math.round(parseFloat(dims.w)*1.5)))+'px';
+      bar.style.background=colorHex||(shelfType==='ledge'?'#8a7050':'#7a6548');
       const info=document.createElement('div');info.className='dcard-info';
-      info.style.background='none';info.style.padding='0';
-      info.innerHTML=`<div class="dcard-name">${esc(l.n)}</div><div class="dcard-dims">${l.w}"×${l.h}" · ${l.type||'shelf'}</div>`;
+      info.style.cssText='background:none;padding:0';
+      info.innerHTML=`<div class="dcard-name">${esc(label)}</div><div class="dcard-dims">${dims.w}"×${dims.h}" · ${shelfType||'shelf'}</div>`;
       card.appendChild(bar);card.appendChild(info);
-      setupCardInteraction(card,key,{type:'shelf',shelf:l});
+      setupCardInteraction(card,key,data);
       grid.appendChild(card);
+    }
+    // Library shelves first
+    const libShelves=S.library.filter(i=>(i.itemCategory||'art')==='shelf');
+    if(libShelves.length){
+      const hdr=document.createElement('div');
+      hdr.style.cssText='width:100%;font-size:9px;color:var(--muted);padding:2px 4px 6px;text-transform:uppercase;letter-spacing:.06em';
+      hdr.textContent='My Shelves';grid.appendChild(hdr);
+      libShelves.forEach(item=>{
+        shelfCard('libshelf:'+item.id,item.name,{w:item.w,h:item.h},item.shelfType||'shelf',item.color?.hex||null,{type:'libshelf',item});
+      });
+      const sep=document.createElement('div');sep.style.cssText='width:100%;height:1px;background:var(--border2);margin:6px 0';grid.appendChild(sep);
+      const hdr2=document.createElement('div');hdr2.style.cssText='width:100%;font-size:9px;color:var(--muted);padding:2px 4px 6px;text-transform:uppercase;letter-spacing:.06em';
+      hdr2.textContent='IKEA Presets';grid.appendChild(hdr2);
+    }
+    IKEA_LEDGES.forEach(l=>{
+      shelfCard('shelf:'+l.n,l.n,{w:l.w,h:l.h},l.type||'shelf',null,{type:'shelf',shelf:l});
     });
     const custom=document.createElement('div');
     custom.className='dcard shelf-dcard';custom.style.cssText='border-style:dashed;cursor:pointer';
     custom.innerHTML='<div style="color:var(--muted);font-size:10px;padding:4px 8px">+ Custom Shelf / Ledge</div>';
     custom.onclick=()=>{closeDrawer();document.getElementById('m-custom-shelf').classList.remove('hide');};
+    grid.appendChild(custom);
+  }else if(drawerTab==='objects'){
+    const libDecor=S.library.filter(i=>(i.itemCategory||'art')==='decor');
+    if(!libDecor.length){
+      grid.innerHTML='<div style="width:100%;text-align:center;padding:30px;color:var(--muted);font-size:11px">No objects yet.<br>Add mirrors, plants &amp; decor in the Library.</div>';
+    }else{
+      libDecor.forEach(item=>{
+        const key='libdecor:'+item.id;
+        const onWall=item.placedId&&S.pieces.find(p=>p.id===item.placedId);
+        const {dw,dh}=cardSize(item.w,item.h);
+        const card=document.createElement('div');
+        card.className='dcard'+(drawerSel.has(key)?' dsel':'')+(onWall?' lifting':'');
+        card.style.width=dw+'px';card.style.height=dh+'px';
+        if(item.img){
+          const img=document.createElement('img');img.className='dcard-thumb';
+          img.src=item.img;img.style.cssText='width:100%;height:100%;object-fit:cover;flex:1';
+          card.appendChild(img);
+        }else{
+          const blank=document.createElement('div');blank.className='dcard-blank';
+          blank.style.cssText='flex:1;display:flex;align-items:center;justify-content:center;font-size:28px';
+          blank.textContent=item.icon||'◈';card.appendChild(blank);
+        }
+        const info=document.createElement('div');info.className='dcard-info';
+        info.innerHTML=`<div class="dcard-name">${esc(item.name)}</div><div class="dcard-dims">${item.w}"×${item.h}"</div>`;
+        card.appendChild(info);
+        if(onWall){card.title='Already on wall';card.style.opacity='.5';}
+        else setupCardInteraction(card,key,{type:'libdecor',item});
+        grid.appendChild(card);
+      });
+    }
+    const custom=document.createElement('div');
+    custom.className='dcard';custom.style.cssText='width:80px;height:80px;align-items:center;justify-content:center;border-style:dashed;cursor:pointer';
+    custom.innerHTML='<div style="text-align:center;color:var(--muted);font-size:10px;padding:8px">+ Add Object</div>';
+    custom.onclick=()=>{closeDrawer();showPage('library');openLibModalFor('decor');};
     grid.appendChild(custom);
   }
   updateDrawerFooter();
@@ -2016,7 +2143,7 @@ let _drag={active:false,ghost:null,data:null,key:null};
 function startDrawerDrag(e,key,data,card){
   card.classList.add('lifting');
   const ghost=document.getElementById('drag-ghost');
-  ghost.textContent=data.type==='lib'?data.item.name:data.type==='frame'?data.frame.name:data.shelf.n;
+  ghost.textContent=data.type==='lib'||data.type==='libshelf'||data.type==='libdecor'?data.item.name:data.type==='frame'?data.frame.name:data.shelf.n;
   ghost.style.display='flex';
   ghost.style.left=e.clientX+'px';ghost.style.top=e.clientY+'px';
   _drag={active:true,ghost,data,key,card};
@@ -2098,6 +2225,35 @@ function addPieceFromDrawerAtPos(data,wx,wy){
     S.pieces.push(piece);mkShelfEl(piece);
     checkConflicts();renderConflicts();updateStatus();
     select(piece.id,false);
+  }else if(data.type==='libshelf'){
+    const item=data.item;
+    const piece={
+      id:S.nid++,type:'shelf',
+      x:clamp(wx-item.w/2,0,S.wall.w-item.w),y:clamp(wy-item.h/2,0,S.wall.h-item.h),
+      w:item.w,h:item.h,color:item.color?.hex||'#7a6548',
+      label:item.name,shelfType:item.shelfType||'shelf',
+      gid:null,zi:S.pieces.length+1,
+      conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
+    };
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkShelfEl(piece);
+    checkConflicts();renderConflicts();updateStatus();
+    select(piece.id,false);renderLibrary();
+  }else if(data.type==='libdecor'){
+    const item=data.item;
+    if(item.placedId&&S.pieces.find(p=>p.id===item.placedId)){showToast('"'+item.name+'" already on wall.');return;}
+    const piece={
+      id:S.nid++,type:'fixture',
+      x:clamp(wx-item.w/2,0,S.wall.w-item.w),y:clamp(wy-item.h/2,0,S.wall.h-item.h),
+      w:item.w,h:item.h,label:item.name,
+      icon:item.icon||'◈',color:item.color?.hex||'#888',
+      gid:null,zi:S.pieces.length+1,
+      conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
+    };
+    item.placedId=piece.id;persistLibrary();
+    S.pieces.push(piece);mkFixtureEl(piece);
+    checkConflicts();renderConflicts();updateStatus();
+    select(piece.id,false);renderLibrary();
   }
 }
 
@@ -2147,6 +2303,30 @@ function addSelectedFromDrawer(){
         conflict:false,gw:false,owarn:false,ywarn:false
       };
       S.pieces.push(piece);mkShelfEl(piece);newIds.push(piece.id);
+    }else if(parts[0]==='libshelf'){
+      const item=S.library.find(i=>String(i.id)===parts[1]);
+      if(!item)return;
+      const pos=findEmptySpot(item.w,item.h);
+      const piece={
+        id:S.nid++,type:'shelf',x:pos.x,y:pos.y,
+        w:item.w,h:item.h,color:item.color?.hex||'#7a6548',
+        label:item.name,shelfType:item.shelfType||'shelf',
+        gid:null,zi:S.pieces.length+1,
+        conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
+      };
+      item.placedId=piece.id;S.pieces.push(piece);mkShelfEl(piece);newIds.push(piece.id);
+    }else if(parts[0]==='libdecor'){
+      const item=S.library.find(i=>String(i.id)===parts[1]);
+      if(!item||item.placedId&&S.pieces.find(p=>p.id===item.placedId))return;
+      const pos=findEmptySpot(item.w,item.h);
+      const piece={
+        id:S.nid++,type:'fixture',x:pos.x,y:pos.y,
+        w:item.w,h:item.h,label:item.name,
+        icon:item.icon||'◈',color:item.color?.hex||'#888',
+        gid:null,zi:S.pieces.length+1,
+        conflict:false,gw:false,owarn:false,ywarn:false,libId:item.id
+      };
+      item.placedId=piece.id;S.pieces.push(piece);mkFixtureEl(piece);newIds.push(piece.id);
     }
   });
   persistLibrary();
